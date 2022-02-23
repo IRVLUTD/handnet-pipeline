@@ -1,0 +1,26 @@
+name: handnet
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.7
+  - numpy=1.20.2
+  - trimesh=3.9.20
+  - easydict
+  - pip
+  - pip:
+    - git+https://github.com/hassony2/chumpy.git
+    - cython==0.29.10
+    - msgpack
+    - pyyaml
+    - tensorboardX
+    - jinja2
+    - matplotlib==3.4.3
+    - opencv-python==4.3.0.36
+    - scipy==1.5.1
+    - pascal_voc_writer
+    - open3d==0.13.0
+    - pyrender==0.1.45
+    - Pillow==8.3.1
+    - progress
+    - plotly
