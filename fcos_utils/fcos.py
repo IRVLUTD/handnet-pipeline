@@ -518,10 +518,12 @@ class FCOS(nn.Module):
     def eager_outputs(
         self, losses: Dict[str, Tensor], detections: List[Dict[str, Tensor]], image_shapes: List[Tuple[int, int]], original_image_sizes: List[Tuple[int, int]], features: List[Tensor]
     ) -> Tuple[Dict[str, Tensor], List[Dict[str, Tensor]]]:
+        if self.training:
+            if self.e2e: 
+                return losses, detections, image_shapes, original_image_sizes, OrderedDict([ (f'{i}', feature) for i, feature in enumerate(features) ])
+            return losses
         if self.e2e:
             return detections, image_shapes, original_image_sizes, OrderedDict([ (f'{i}', feature) for i, feature in enumerate(features) ])
-        if self.training:
-            return losses
         return detections
 
     def compute_loss(
@@ -755,9 +757,9 @@ class FCOS(nn.Module):
 
         losses = {}
         detections: List[Dict[str, Tensor]] = []
-        if self.training and not self.e2e:
+        if self.training:
             assert targets is not None
-
+            detections = self.postprocess_detections(head_outputs, anchors, num_anchors_per_level)
             # compute the losses
             losses = self.compute_loss(targets, head_outputs, anchors, num_anchors_per_level)
         else:

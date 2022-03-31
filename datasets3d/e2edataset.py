@@ -10,6 +10,7 @@ import pickle
 import os
 from manopth.manolayer import ManoLayer
 from tqdm import tqdm
+from zmq import HANDSHAKE_IVL
 
 from datasets3d.queries import TransQueries, BaseQueries
 import pycocotools.mask
@@ -156,21 +157,73 @@ class E2EDataset(Dataset):
         bbox = np.array(pycocotools.mask.toBbox(rle).tolist())
         bbox[2:] += bbox[:2]
 
-        idx = torch.tensor([idx], dtype=torch.int64)
+        source_idx = torch.tensor([idx], dtype=torch.int64)
         dexycb_id = torch.tensor([self.refined_idx[idx]], dtype=torch.int64)
         joints_2d = torch.from_numpy(joints_2d).squeeze()
+        
+        img_id = idx
+
+        labels = []
+        boxes = np.zeros((len(source_sample['ycb_ids'] + [255]), 4))
+
+        label = np.load(source_sample['label_file'])
+        for idx, y in enumerate(source_sample['ycb_ids'] + [255]):
+            mask = label['seg'] == y
+            if np.count_nonzero(mask) == 0:
+                continue
+            mask = np.asfortranarray(mask)
+            rle = pycocotools.mask.encode(mask)
+            bbox = np.array(pycocotools.mask.toBbox(rle).tolist())
+            bbox[2:] += bbox[:2]
+            if y == 255:
+                category_id = 22
+            else:
+                category_id = y
+            labels.append(category_id)
+            boxes[idx] = bbox
+
+        indexes = []
+        for idx, i in enumerate(boxes):
+            if i[0] == 0 and i[1] == 0 and i[2] == 0 and i[3] == 0:
+                indexes.append(idx)
+
+        boxes = np.delete(boxes, indexes, axis=0)
+        handinfo = np.full((len(boxes), 5), -1., dtype=np.float32)
+        handinfo[:, 4].fill(0)
+
+        idx_hand = -1
+        for idx in range(len(labels)):
+            if labels[idx] == 22:
+                idx_hand = idx
+        if idx_hand >= 0:
+            handinfo[idx_hand, 1] = 1 if source_sample['mano_side'] == 'right' else 0
+
+        handbox = boxes[idx_hand]
+        joints_2d -= handbox[:2]
+
+
+        image_id = torch.tensor([img_id])
+        boxes = torch.as_tensor(boxes, dtype=torch.float32)
+        labels = torch.as_tensor(labels, dtype=torch.int64)
+        box_info = torch.as_tensor(handinfo, dtype=torch.float32)
+
+        target = {}
+        target["image_id"] = image_id
+        target["boxes"] = boxes
+        target["labels"] = labels
+        target["box_info"] = box_info
 
         sample = {}
-        sample["idx"] = idx
+        sample["idx"] = source_idx
         sample["dexycb_id"] = dexycb_id
         sample[TransQueries.verts3d] = verts3d.float()
         sample[TransQueries.joints3d] = joints3d.float()
         sample[TransQueries.joints2d] = joints_2d.float()
-        sample[BaseQueries.sides] = 0 if source_sample['mano_side'] =='left' else 1
+        sample[BaseQueries.sides] = torch.tensor([0]) if source_sample['mano_side'] =='left' else torch.tensor([1])
 
-        sample["box"] = torch.tensor(bbox, dtype=torch.float32)
+        sample["box"] = torch.tensor(handbox, dtype=torch.float32)
         
-        return self.transform(im), sample
+        return self.transform(im), target, sample
 
     def get_height_and_width(self,idx):
         source_sample = self.data[self.refined_idx[idx]]

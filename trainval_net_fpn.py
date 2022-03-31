@@ -22,6 +22,7 @@ from fcos_utils.fcos import FCOS
 from utils.argutils import parse_detection_args, parse_general_args
 from utils.utils import get_loaders_100doh
 from tqdm import tqdm
+from mano_train.evaluation.evalutils import AverageMeters
 
 import numpy as np
 
@@ -42,6 +43,7 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq, ar
         lr_scheduler = torch.optim.lr_scheduler.LinearLR(
             optimizer, start_factor=warmup_factor, total_iters=warmup_iters
         )
+
     #for idx, (images, targets) in enumerate(tqdm(data_loader)):
     for idx, (images, targets) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
         images = list(image.to(device) for image in images)
@@ -108,12 +110,13 @@ def evaluate(model, data_loader, imdb, args, device):
     os.makedirs(output_dir, exist_ok=True)
     model.eval()
     metric_logger = utils.MetricLogger(delimiter="  ")
-    header = "Test:"
     all_boxes = [[[] for _ in range(len(data_loader.dataset))] for _ in range(imdb.num_classes)]
     empty_array = np.transpose(np.array([[],[],[],[],[]]), (1,0))
 
-    with torch.no_grad():
-        for images, targets in metric_logger.log_every(data_loader, 100, header):
+    time_meters = AverageMeters()
+
+    with torch.inference_mode():
+        for images, targets in tqdm(data_loader):
             images = list(img.to(device) for img in images)
 
             if torch.cuda.is_available():
@@ -121,6 +124,8 @@ def evaluate(model, data_loader, imdb, args, device):
             model_time = time.time()
             outputs = model(images)
             model_time = time.time() - model_time
+
+            time_meters.add_loss_value("model_time", model_time)
 
             obj_ind = [torch.nonzero( (t['scores'] > 0.1) & (t['labels'] == 1) ).squeeze() for t in outputs]
             hand_ind = [torch.nonzero( (t['scores'] > 0.1) & (t['labels'] == 2) ).squeeze() for t in outputs]
@@ -161,13 +166,9 @@ def evaluate(model, data_loader, imdb, args, device):
                     all_boxes[1][id] = obj_final[idx]
                     all_boxes[2][id] = hand_final[idx]
 
-            metric_logger.update(model_time=model_time)
-
     # gather the stats from all processes
-    metric_logger.synchronize_between_processes()
     imdb.evaluate_detections(all_boxes, output_dir)
-    print("Averaged stats:", metric_logger)
-    print("FPS:", 1.0 / float(str(metric_logger)[12:18]))
+    print("FPS:", 1.0 / time_meters.average_meters["model_time"].avg)
 
 def main(args):
     device = torch.device(args.device)
@@ -179,7 +180,7 @@ def main(args):
     print("Creating model")
     #backbone = backbonefpn
     if args.net == 'fcos':
-        model = FCOS(num_classes=num_classes)
+        model = FCOS(num_classes=num_classes, nms_thresh=0.5)
     else:
         model = FasterRCNN(num_classes=num_classes, num_layers=int(args.net[3:]))
     model.to(device)

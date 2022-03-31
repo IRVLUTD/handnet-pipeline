@@ -22,9 +22,10 @@ def visualize_batch(
     max_rows=4,
     joint_idxs=False,
 ):
-    if TransQueries.images in sample:
-        images = sample[TransQueries.images]
-        batch_nb = min(images.shape[0], max_rows)
+    images = None
+    if BaseQueries.features in sample:
+        features = sample[BaseQueries.features]
+        batch_nb = min(features.shape[0], max_rows)
 
 
     # Get hand verts
@@ -45,7 +46,7 @@ def visualize_batch(
 
     # Get hand joints
     if TransQueries.joints3d in sample:
-        gt_batchjoints3d = sample[TransQueries.joints3d].numpy()
+        gt_batchjoints3d = sample[TransQueries.joints3d].cpu().numpy()
     else:
         gt_batchjoints3d = None
     if "joints" in results:
@@ -86,7 +87,7 @@ def visualize_batch(
         sides = None
         idx = None
     if TransQueries.joints2d in sample:
-        gt_batchjoints2d = sample[TransQueries.joints2d].numpy()
+        gt_batchjoints2d = sample[TransQueries.joints2d].cpu().numpy()
     else:
         gt_batchjoints2d = None
     if "joints2d" in results:
@@ -157,12 +158,12 @@ def visualize_batch(
 
             verts3d_refine = get_row(pred_batchverts3d_refine, row_idx)
         # Show output mesh
-        ax = fig.add_subplot(
-            batch_nb * row_factor,
-            col_nb,
-            row_idx * row_factor * col_nb + 2,
-            projection="3d",
-        )
+        # ax = fig.add_subplot(
+        #     batch_nb * row_factor,
+        #     col_nb,
+        #     row_idx * row_factor * col_nb + 2,
+        #     projection="3d",
+        # )
 
         # Show x, y projection
         ax = fig.add_subplot(

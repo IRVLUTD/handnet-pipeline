@@ -31,7 +31,7 @@ class E2EBridge(nn.Module):
         )
 
     def forward(
-        self, sample, features, boxes, image_shapes, sides
+        self, sample, features, boxes, image_shapes, sides=None, test=False
     ):
         aligned_features, batch_idx, level_idx = self.roi_align(features, boxes, image_shapes)
         aligned_features = self.head_3d(aligned_features)
@@ -42,8 +42,7 @@ class E2EBridge(nn.Module):
             TransQueries.verts3d: sample[TransQueries.verts3d][batch_idx[:]],
             TransQueries.joints3d: sample[TransQueries.joints3d][batch_idx[:]],
             TransQueries.joints2d: sample[TransQueries.joints2d][batch_idx[:]],
-            BaseQueries.sides: sample[BaseQueries.sides][batch_idx[:]],
-            #BaseQueries.sides: torch.cat(sides),
+            BaseQueries.sides: torch.cat(sides) if test else sample[BaseQueries.sides][batch_idx[:]].flatten(),
             BaseQueries.features: aligned_features
         }
 

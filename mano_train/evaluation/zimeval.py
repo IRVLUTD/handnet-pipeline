@@ -35,7 +35,7 @@ class EvalUtil:
         Stores the euclidean distance between gt and pred, when it is visible.
         """
         if isinstance(keypoint_gt, torch.Tensor):
-            keypoint_gt = keypoint_gt.numpy()
+            keypoint_gt = keypoint_gt.cpu().numpy()
         if isinstance(keypoint_pred, torch.Tensor):
             keypoint_pred = keypoint_pred.numpy()
         keypoint_gt = np.squeeze(keypoint_gt)

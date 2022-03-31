@@ -10,6 +10,10 @@ from fpn_utils.group_by_aspect_ratio import GroupedBatchSampler, create_aspect_r
 def collate_fn(batch):
     return tuple(zip(*batch))
 
+def e2e_collate_fn(batch):
+    batch = tuple(zip(*batch))
+    return tuple([*batch[:-1], torch.utils.data.dataloader.default_collate(batch[2])])
+
 def get_transform():
     transforms = []
     transforms.append(T.ToTensor())
@@ -108,7 +112,7 @@ def get_e2e_loaders(args, detect=False):
 
         data_loader = torch.utils.data.DataLoader(
         dataset, batch_sampler=train_batch_sampler, num_workers=args.workers,
-        collate_fn=collate_fn if detect else None)
+        collate_fn=collate_fn if detect else e2e_collate_fn)
 
         with open(f'{cache_dir}train.pkl', 'wb+') as f:
             pickle.dump(data_loader, f)
@@ -123,7 +127,7 @@ def get_e2e_loaders(args, detect=False):
         data_loader_test = torch.utils.data.DataLoader(
             dataset_test, batch_size=1,
             sampler=test_sampler, num_workers=args.workers,
-            collate_fn=collate_fn if detect else None)
+            collate_fn=collate_fn if detect else e2e_collate_fn)
 
         with open(f'{cache_dir}test.pkl', 'wb+') as f:
             pickle.dump(data_loader_test, f)

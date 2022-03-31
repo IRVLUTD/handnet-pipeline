@@ -24,6 +24,11 @@ from datasets3d.queries import TransQueries
 from mano_train.visualize import displaymano
 import pickle, numpy as np
 import json
+from tqdm import tqdm
+import matplotlib.pyplot as plt
+import matplotlib
+
+matplotlib.use('Agg') 
 
 def reshape_output(outputs):
 
@@ -36,41 +41,68 @@ def reshape_output(outputs):
 
     return outputs
 
-def evaluate(model, data_loader_e2e, data_loader_detect, args):
+def evaluate(model, data_loader, args):
     model.eval()
+    time_meters = AverageMeters()
 
     all_boxes = []
+    metric_path = os.path.join(args.output_dir, 'test_metrics/')
+    os.makedirs(metric_path, exist_ok=True)
 
-    with torch.no_grad():
-        for batch_idx, (images, targets, sample) in enumerate(zip(data_loader_detect, data_loader_e2e)):
+    with torch.inference_mode():
+        for images, targets, sample in tqdm(data_loader):
             images = [ image.cuda() for image in images ]
-            with torch.inference_mode():
-                results, detections, batch_idx, level_idx, boxes = model(images, sample)
-            
+            model_time = time.time()
+            results, detections, batch_idx, level_idx, boxes = model(images, sample=sample)
+            model_time = time.time() - model_time
+            time_meters.add_loss_value("model_time", model_time)
             outputs = detections
 
             outputs = reshape_output(outputs)
 
             pred_dict = {}
             for i, output in enumerate(outputs):
-                pred_dict["image_id"] = targets[i]["image_id"].item()
+                pred_dict["image_id"] = sample["dexycb_id"][i].item()
                 scores = output["scores"].cpu().numpy()
                 boxes = output["boxes"].cpu().numpy()
                 labels = output["labels"].cpu().numpy()
                 for j, bbox in enumerate(boxes):
                     bbox[2:] -= bbox[:2]
-                    pred_dict["bbox"] = bbox
-                    pred_dict["score"] = scores[j].item()
+                    pred_dict["bbox"] = list(np.float64(bbox))
+                    pred_dict["score"] = np.float64(scores[j].item())
                     pred_dict["category_id"] = labels[j].item()
                     all_boxes.append(pred_dict)
+
+
+            for i in range(len(results['joints'])):
+                joints3d = results['joints'][i]
+
+                joints3d = joints3d.cpu().detach().numpy().squeeze().squeeze()
+                j_text = ''
+                for j in joints3d:
+                    j_text += str(list(j)).strip()[1:-1] + ','
+                j_text = j_text.replace(" ", "")[:-1]
+                
+                with open(metric_path + f's0_test_{args.start_epoch - 1 }.txt', 'a') as output:
+                    print(str(sample['dexycb_id'][0].numpy())[1:-1] + ',' + j_text, file=output)
+    
+    print(f"Average fps: {1./time_meters.average_meters['model_time'].avg}")
     
     with open('results.json', 'w+') as f:
         json.dump(all_boxes, f)
-
-    return all_boxes
             
 
-def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq, scaler):
+def train_one_epoch(
+    model, 
+    optimizer, 
+    data_loader, 
+    epoch, 
+    scaler, 
+    fig, 
+    faces_left,
+    faces_right,
+    display_freq=500
+):
     avg_meters = AverageMeters()
     time_meters = AverageMeters()
     evaluator = EvalUtil()
@@ -81,17 +113,19 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq, sc
     )
 
     os.makedirs(save_img_folder, exist_ok=True)
-    bar = Bar("Processing", max=len(data_loader))
+    pbar = tqdm(data_loader)
     idxs = list(range(21))
 
-    for idx, (images, target) in enumerate(data_loader):
+    for idx, (images,targets, sample) in enumerate(pbar):
         end = time.time()
         images = list(img.cuda() for img in images)
+        targets = [{k: v.cuda() for k, v in t.items()} for t in targets]
+        sample = {k: v.cuda() for k, v in sample.items()}        
         time_meters.add_loss_value("data_time", time.time() - end)
 
         with torch.cuda.amp.autocast(enabled=scaler is not None):
             # model_losses, results, target = model(images, sample)
-            model_losses, results, target = model(images, target)
+            model_losses, results, sample = model(images, targets, sample, single=True)
         model_loss = model_losses['total_loss']
 
         optimizer.zero_grad()
@@ -105,7 +139,6 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq, sc
 
         for loss in model_losses:
             if model_losses[loss] is not None:
-                tensor = model_losses[loss]
                 value = model_losses[loss].item()
                 model_losses[loss] = value
 
@@ -116,21 +149,21 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq, sc
         save_img_path = os.path.join(
             save_img_folder, "img_{:06d}.png".format(idx)
         )
-        # if (idx % display_freq == 0) and display:
-        #     displaymano.visualize_batch(
-        #         save_img_path,
-        #         fig=fig,
-        #         sample=sample,
-        #         results=results,
-        #         faces_right=faces_right,
-        #         faces_left=faces_left,
-        #     )
+        if (idx % display_freq == 0):
+            displaymano.visualize_batch(
+                save_img_path,
+                fig=fig,
+                sample=sample,
+                results=results,
+                faces_right=faces_right,
+                faces_left=faces_left,
+            )
 
-        if "joints" in results and TransQueries.joints3d in target:
+        if "joints" in results and TransQueries.joints3d in sample:
             preds = results["joints"].detach().cpu()
             # Keep only evaluation joints
             preds = preds[:, idxs]
-            gt = target[TransQueries.joints3d][:, idxs]
+            gt = sample[TransQueries.joints3d][:, idxs]
 
             # Feed predictions to evaluator
             visibilities = [None] * len(gt)
@@ -139,17 +172,11 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq, sc
 
         time_meters.add_loss_value("batch_time", time.time() - end)
 
-        # plot progress
-        bar.suffix = "({batch}/{size}) Data: {data:.6f}s | Batch: {bt:.3f}s | Total: {total:} | ETA: {eta:} | Loss: {loss:.4f}".format(
-        batch=idx + 1,
-        size=len(data_loader),
-        data=time_meters.average_meters["data_time"].val,
-        bt=time_meters.average_meters["batch_time"].avg,
-        total=bar.elapsed_td,
-        eta=bar.eta_td,
-        loss=avg_meters.average_meters["total_loss"].avg,
-        )
-        bar.next()
+        # pbar with loss
+        pbar.set_postfix({ 
+            'Batch Time': time_meters.average_meters['batch_time'].avg, 
+            'Loss' : avg_meters.average_meters['total_loss'].avg
+        })
 
     (
         epe_mean_all,
@@ -189,7 +216,6 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq, sc
     else:
         pck_info = {}
 
-    bar.finish()
     return avg_meters, pck_info
         
 
@@ -231,8 +257,7 @@ def main(args):
             scaler.load_state_dict(checkpoint["scaler"])
 
     if args.test_only:
-        _, detect_data_loader_test = get_e2e_loaders(args, detect=True) 
-        evaluate(model, data_loader_test, detect_data_loader_test, args)
+        evaluate(model, data_loader_test, args)
         return
 
 
@@ -241,9 +266,27 @@ def main(args):
 
     hosting_folder = os.path.join(args.output_dir, "hosting")
     monitor = Monitor(args.output_dir, hosting_folder=hosting_folder)
+    fig = plt.figure(figsize=(12, 12))
+    
+    with open("misc/mano/MANO_RIGHT.pkl", "rb") as p_f:
+        mano_right_data = pickle.load(p_f, encoding="latin1")
+        faces_right = mano_right_data["f"]
+    with open("misc/mano/MANO_LEFT.pkl", "rb") as p_f:
+        mano_left_data = pickle.load(p_f, encoding="latin1")
+        faces_left = mano_left_data["f"]
 
     for epoch in range(args.start_epoch, args.epochs+1):
-        train_avg_meters, train_pck_infos = train_one_epoch(model, optimizer, data_loader, device, epoch, args.print_freq, scaler)
+        
+        train_avg_meters, train_pck_infos = train_one_epoch(
+            model, 
+            optimizer, 
+            data_loader,
+            epoch, 
+            scaler,
+            fig,
+            faces_left,
+            faces_right,
+        )
         lr_scheduler.step()
 
         # Save custom logs

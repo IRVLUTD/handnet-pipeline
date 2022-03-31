@@ -17,7 +17,7 @@ from datasets3d.queries import BaseQueries, TransQueries
 
 def load_pretrained_fcos(args):
     print("Loading pretrained detector")
-    detector = FCOS(num_classes=23, ext=False, e2e=True)
+    detector = FCOS(num_classes=23, ext=False, e2e=True, nms_thresh=0.5)
     checkpoint = torch.load(args.pretrained, map_location="cpu")
     detector.load_state_dict(checkpoint["model"], strict=False)
     
@@ -43,7 +43,7 @@ class E2EHandNet(nn.Module):
     ):
         super().__init__()
         self.detector = load_pretrained_fcos(args)
-        # self.detector.eval()
+        self.detector.eval()
 
         #self.detector = load_pretrained_fpn(args)
         #self.detector.eval()
@@ -58,62 +58,83 @@ class E2EHandNet(nn.Module):
                 mano_use_joints2d=args.mano_use_joints2d,
         )
 
-        self.handnet = torch.nn.DataParallel(self.handnet_single)
+        self.handnet = torch.nn.DataParallel(self.handnet_single) # if torch.cuda.device_count() > 1 else self.handnet_single
         self.bridge = E2EBridge(out_channels=self.detector.backbone.out_channels)
     
     def forward(
         self, 
         images: List[Tensor],
+        target: Optional[List[Dict[str, Tensor]]] = None,
         sample: Optional[List[Dict[str, Tensor]]] = None,
         single: bool = False,
     ):
-        detections, image_shapes, original_image_shapes, features = self.detector(images, None) # N x Dict[str, Tensor]
-        
-        hand_mask = [(det['labels'] == 22) for det in detections ]
+        if single:
+            image_shapes = []
+            for img in images:
+                val = img.shape[-2:]
+                assert len(val) == 2
+            image_shapes.append((val[0], val[1]))
 
-        feature_idx = []
-        sides = []
-        for det_idx, det in enumerate(detections):
-            feature_idx.append(det['feature_idx'][hand_mask[det_idx]])
-            sides.append(det['sides'][hand_mask[det_idx]])
+            images, target = self.detector.transform(images, target)
+            features = self.detector.backbone(images.tensors) # N x Dict[str, Tensor]
+            boxes = [ list(sample['box'].reshape(-1, 1, 4)) for _ in range(len(features)) ]
+        else:
+            detections, image_shapes, original_image_shapes, features = self.detector(images, None)
+            hand_mask = [(det['labels'] == 22) for det in detections ]
+ 
+            feature_idx = []
+            sides = []
+            for det_idx, det in enumerate(detections):
+                feature_idx.append(det['feature_idx'][hand_mask[det_idx]])
+                sides.append(det['sides'][hand_mask[det_idx]])
+            
+            boxes = [
+                [ det['boxes'][hand_mask[i]][ torch.where( feature_idx[i] == feat_idx) ] for i, det in enumerate(detections) ]
+                for feat_idx in range(len(features))
+            ]
+            # N x Dict[str, Tensor]
+        # in testing, truncate when > 1 hand is detected, fill when 0 hand is
+        sample, batch_idx, level_idx = self.bridge(sample, features, boxes, image_shapes, None if single else sides)
 
-        boxes = [
-            [ det['boxes'][hand_mask[i]][ torch.where( feature_idx[i] == feat_idx) ] for i, det in enumerate(detections) ]
-            for feat_idx in range(len(features))
-        ]
-
-        target, batch_idx, level_idx = self.bridge(sample, features, boxes, image_shapes, sides)
-
-        results = self.handnet(target)
+        results = self.handnet(sample)
 
         if self.training:
 
-            # # compute losses
-            model_losses = {}
+            # compute 3d parameter module losses
+            losses_3d = {}
             model_loss = None
 
             results_names_dict = {
-                "verts": TransQueries.verts3d,
+                #"verts": TransQueries.verts3d,
                 "joints": TransQueries.joints3d,
-                "joints2d": TransQueries.joints2d,
+                #"joints2d": TransQueries.joints2d,
             }
 
             for r_name in results_names_dict.keys():
-                gt = target[results_names_dict[r_name]].cuda()
-                model_losses[r_name] = torch_f.mse_loss(
-                    results[r_name], gt.float()
+                gt = sample[results_names_dict[r_name]].cuda()
+                losses_3d[r_name] = torch_f.mse_loss(
+                    results[r_name] / 1000., gt.float() / 1000.
                 ).float()
 
             # shape regularizer to avg shape: 0 [Nx10]
-            model_losses["shape_reg"] = torch_f.mse_loss(
+            losses_3d["shape_reg"] = torch_f.mse_loss(
                 results["shape"], torch.zeros_like(results["shape"])
             ).float()
 
-            model_loss = 0.167*sum(model_losses.values())
-            model_losses['total_loss'] = model_loss
+            loss_3d = 1000 * sum(losses_3d.values())
+            # training detector
 
-            return model_losses, results, target
+            # loss_det = sum(loss for loss in det_losses.values())
+
+            # total_losses = {k: v for d in [det_losses, losses_3d] for k, v in d.items()}
+            # total_losses['total_loss'] = loss_3d + loss_det
+            
+            total_losses = {k: v for k, v in losses_3d.items()}
+            total_losses['total_loss'] = loss_3d
+
+            return total_losses, results, sample
         else:
+            detections = self.detector.postprocess(detections, image_shapes, original_image_shapes)
             return results, detections, batch_idx, level_idx, boxes
 
             # original_image_sizes: List[Tuple[int, int]] = []
