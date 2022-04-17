@@ -22,12 +22,13 @@ class EvalUtil:
     """ Util class for evaluation networks.
     """
 
-    def __init__(self, num_kp=21):
+    def __init__(self, num_kp=21, root_relative=False):
         # init empty data storage
         self.data = list()
         self.num_kp = num_kp
         for _ in range(num_kp):
             self.data.append(list())
+        self.root_relative = root_relative
 
     def feed(self, keypoint_gt, keypoint_pred, keypoint_vis=None):
         """
@@ -48,6 +49,11 @@ class EvalUtil:
         assert len(keypoint_gt.shape) == 2
         assert len(keypoint_pred.shape) == 2
         assert len(keypoint_vis.shape) == 1
+
+        if self.root_relative:
+        # root-relative AUC
+            keypoint_gt -= keypoint_gt[0]
+            keypoint_pred -= keypoint_pred[0]
 
         # calc euclidean distance
         diff = keypoint_gt - keypoint_pred

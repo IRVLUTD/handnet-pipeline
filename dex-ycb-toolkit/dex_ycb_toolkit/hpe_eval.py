@@ -270,5 +270,5 @@ class HPEEvaluator():
   
   def save_epoch_metrics(self, out_dir):
     """Saves the epoch metrics to a file."""
-    with open(os.path.join(out_dir, 'hpe_epoch_metrics.pkl'), 'ab') as f:
+    with open(os.path.join(out_dir, 'hpe_epoch_metrics.pkl'), 'wb+') as f:
       pickle.dump(self._epoch_metrics, f)

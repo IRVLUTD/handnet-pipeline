@@ -1,5 +1,6 @@
 from socket import TCP_WINDOW_CLAMP
 from turtle import forward
+from cv2 import RECURS_FILTER
 from torch import nn, Tensor
 import torch
 
@@ -7,46 +8,55 @@ import torchvision
 from torchvision.ops import roi_align
 
 from typing import Optional, List, Dict, Tuple, Union
+from e2e_handnet.deconv import Deconv
 from fpn_utils.faster_rcnn_fpn import TwoMLPHead
 from datasets3d.queries import TransQueries, BaseQueries
+from e2e_handnet.deconv import Conv
 
 class E2EBridge(nn.Module):
     def __init__(
         self,
-        out_channels: int = 256,
+        out_channels: int = 8,
+        output_size: int = 8,
     ):
 
         super().__init__()
 
         self.roi_align = MultiScaleRoIAlign(
-                featmap_levels=['0', '1', '2'],
-                output_size=7,
+                output_size=output_size,
                 sampling_ratio=2)
 
-        resolution = self.roi_align.output_size[0]
         representation_size = 1024
+        self.deconv = Deconv(downsample=2)
+        self.conv1 = Conv(256, out_channels)
         self.head_3d = TwoMLPHead(
-            out_channels * resolution ** 2,
+            out_channels * 64 ** 2,
             representation_size,
         )
+        # self.head_3d = TwoMLPHead(
+        #     256 * output_size ** 2,
+        #     representation_size,
+        # )
 
     def forward(
-        self, sample, features, boxes, image_shapes, sides=None, test=False
+        self, sample, features, boxes, image_shapes, image_mask, sides=None, test=False
     ):
-        aligned_features, batch_idx, level_idx = self.roi_align(features, boxes, image_shapes)
+        aligned_features = self.roi_align(features, boxes, image_shapes)
+        aligned_features = self.deconv(aligned_features)
+        aligned_features = self.conv1(aligned_features)
         aligned_features = self.head_3d(aligned_features)
         
         target = {
-            'idx': sample['idx'][batch_idx[:]],
-            'dexycb_id': sample['dexycb_id'][batch_idx[:]],
-            TransQueries.verts3d: sample[TransQueries.verts3d][batch_idx[:]],
-            TransQueries.joints3d: sample[TransQueries.joints3d][batch_idx[:]],
-            TransQueries.joints2d: sample[TransQueries.joints2d][batch_idx[:]],
-            BaseQueries.sides: torch.cat(sides) if test else sample[BaseQueries.sides][batch_idx[:]].flatten(),
+            'idx': sample['idx'][image_mask],
+            'dexycb_id': sample['dexycb_id'][image_mask],
+            TransQueries.verts3d: sample[TransQueries.verts3d][image_mask],
+            TransQueries.joints3d: sample[TransQueries.joints3d][image_mask],
+            TransQueries.joints2d: sample[TransQueries.joints2d][image_mask],
+            BaseQueries.sides: torch.cat(sides) if test else sample[BaseQueries.sides][image_mask].flatten(),
             BaseQueries.features: aligned_features
         }
 
-        return target, batch_idx, level_idx
+        return target
 
 
 
@@ -69,40 +79,15 @@ class MultiScaleRoIAlign(nn.Module):
 
     def __init__(
         self,
-        featmap_levels: List[str],
         output_size: Union[int, Tuple[int], List[int]],
         sampling_ratio: int,
     ):
         super(MultiScaleRoIAlign, self).__init__()
         if isinstance(output_size, int):
             output_size = (output_size, output_size)
-        self.featmap_levels = featmap_levels
         self.sampling_ratio = sampling_ratio
         self.output_size = tuple(output_size)
         self.scales = None
-
-    def convert_to_roi_format(self, boxes: List[Tensor]) -> Tensor:
-        concat_boxes = torch.cat(boxes, dim=0)
-        device, dtype = concat_boxes.device, concat_boxes.dtype
-        ids = torch.cat(
-            [
-                torch.full_like(b[:, :1], i, dtype=dtype, layout=torch.strided, device=device)
-                for i, b in enumerate(boxes)
-            ],
-            dim=0,
-        )
-        # rois = torch.cat([ids, concat_boxes], dim=1)
-        # boxes = boxes.reshape(boxes.shape[0], -1, 4)
-        # device, dtype = boxes.device, boxes.dtype
-        # ids = torch.cat(
-        #     [
-        #         torch.full_like(b[:, :1], i, dtype=dtype, layout=torch.strided, device=device)
-        #         for i, b in enumerate(boxes)
-        #     ],
-        #     dim=0,
-        # )   
-        rois = torch.cat([ids, concat_boxes], dim=1)
-        return rois
 
     def infer_scale(self, feature: Tensor, original_size: List[int]) -> float:
         # assumption: the scale is of the form 2 ** (-k), with k integer
@@ -117,7 +102,7 @@ class MultiScaleRoIAlign(nn.Module):
 
     def setup_scales(
         self,
-        features: List[Tensor],
+        feature: Tensor,
         image_shapes: List[Tuple[int, int]],
     ) -> None:
         assert len(image_shapes) != 0
@@ -128,7 +113,7 @@ class MultiScaleRoIAlign(nn.Module):
             max_y = max(shape[1], max_y)
         original_input_shape = (max_x, max_y)
 
-        self.scales = [self.infer_scale(feat, original_input_shape) for feat in features]
+        self.scales = self.infer_scale(feature, original_input_shape)
 
     def forward(
         self,
@@ -138,9 +123,9 @@ class MultiScaleRoIAlign(nn.Module):
     ) -> Tensor:
         """
         Args:
-            x (OrderedDict[Tensor]): feature maps for each level. They are assumed to have
+            x [Tensor]: feature maps for each level. They are assumed to have
                 all the same number of channels, but they can have different sizes.
-            boxes List[List[Tensor[N, 4]]]: boxes for each image in each level to be used to perform the pooling operation, in
+            boxes Tensor[N, 4]: boxes for each image in each level to be used to perform the pooling operation, in
                 (x1, y1, x2, y2) format and in the image reference size, not the feature map
                 reference. The coordinate must satisfy ``0 <= x1 < x2`` and ``0 <= y1 < y2``.
             image_shapes (List[Tuple[height, width]]): the sizes of each image before they
@@ -150,68 +135,25 @@ class MultiScaleRoIAlign(nn.Module):
             result (Tensor)
         """
 
-        x_filtered = []
-        for k, v in x.items():
-            if k in self.featmap_levels:
-                x_filtered.append(v)
-        num_levels = len(x_filtered)
-
         # F = number of feature maps
         # boxes | F * N * N_H_i_f * 4
-        rois = []
-        num_rois = []
-        for boxes_per_level in boxes:
-            rois_per_level = self.convert_to_roi_format(boxes_per_level)
-            rois.append(rois_per_level)
-            num_rois.append(len(rois_per_level))
+        rois = list(boxes.reshape(-1, 1, 4))
 
         # rois | F * (N_H_f * 4)
         # num_rois | F = number of rois per level
         
         if self.scales is None:
-            self.setup_scales(x_filtered, image_shapes)
+            self.setup_scales(x, image_shapes)
 
         scales = self.scales
         assert scales is not None
 
-        if num_levels == 1:
-            return roi_align(
-                x_filtered[0], rois,
-                output_size=self.output_size,
-                spatial_scale=scales[0],
-                sampling_ratio=self.sampling_ratio
-            )
+        dtype, device = x[0].dtype, x[0].device
 
-        num_channels = x_filtered[0].shape[1]
-
-        dtype, device = x_filtered[0].dtype, x_filtered[0].device
-
-        result = []
-        batch_idx = []
-        level_idx = []
-        for i in range(num_levels):
-            result.append(torch.zeros((num_rois[i], num_channels,) + self.output_size,
-                dtype=dtype,
-                device=device,))
-            batch_idx.append(torch.zeros(
-                (num_rois[i]),
-                dtype=torch.int64,
-                device=device,
-            ))
-            level_idx.append(torch.full_like( 
-                batch_idx[i], 
-                i, 
-                dtype=torch.int64, 
-                device=device
-            ))
-
-        tracing_results = []
-        for level, (per_level_feature, scale, per_level_rois) in enumerate(zip(x_filtered, scales, rois)):
-
-            result_idx_in_level = roi_align(
-                per_level_feature, per_level_rois,
-                output_size=self.output_size,
-                spatial_scale=scale, sampling_ratio=self.sampling_ratio)
+        result = roi_align(
+        x, rois,
+        output_size=self.output_size,
+        spatial_scale=scales[0], sampling_ratio=self.sampling_ratio)
 
                 # result and result_idx_in_level's dtypes are based on dtypes of different
                 # elements in x_filtered.  x_filtered contains tensors output by different
@@ -220,10 +162,9 @@ class MultiScaleRoIAlign(nn.Module):
                 # before copying elements from result_idx_in_level in the following op.
                 # We need to cast manually (can't rely on autocast to cast for us) because
                 # the op acts on result in-place, and autocast only affects out-of-place ops.
-            result[level] = result_idx_in_level.to(dtype)
-            batch_idx[level] = per_level_rois[:, 0].to(torch.int64)
+        result = result.to(dtype).to(device)
 
-        return torch.cat(result, dim=0), torch.cat(batch_idx, dim=0), torch.cat(level_idx, dim=0) # final result | (sum(N_H ), ...)
+        return result
 
     def __repr__(self) -> str:
         return (f"{self.__class__.__name__}(featmap_names={self.featmap_levels}, "

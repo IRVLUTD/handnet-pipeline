@@ -19,7 +19,7 @@ import math, sys
 
 from fcos_utils.fcos import FCOS
 
-from utils.argutils import parse_detection_args, parse_general_args
+from utils.argutils import parse_training_args, parse_general_args
 from utils.utils import get_loaders_100doh
 from tqdm import tqdm
 from mano_train.evaluation.evalutils import AverageMeters
@@ -243,7 +243,7 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description='Hand Object Detector with FPN (All ResNets) or FCOS')
     parse_general_args(parser)
-    parse_detection_args(parser)
+    parse_training_args(parser)
 
     args = parser.parse_args()
 

@@ -456,7 +456,6 @@ class FCOS(nn.Module):
         num_classes: int,
         # transform parameters
         ext: bool = True,
-        e2e: bool = False,
         min_size: int = 800,
         max_size: int = 1333,
         image_mean: Optional[List[float]] = None,
@@ -472,7 +471,6 @@ class FCOS(nn.Module):
     ):
         super().__init__()
         self.ext = ext
-        self.e2e = e2e
 
         backbone = resnet_fpn_backbone('resnet34', pretrained=True, returned_layers=[2,3,4])
 
@@ -516,14 +514,9 @@ class FCOS(nn.Module):
 
     @torch.jit.unused
     def eager_outputs(
-        self, losses: Dict[str, Tensor], detections: List[Dict[str, Tensor]], image_shapes: List[Tuple[int, int]], original_image_sizes: List[Tuple[int, int]], features: List[Tensor]
-    ) -> Tuple[Dict[str, Tensor], List[Dict[str, Tensor]]]:
+        self, losses: Dict[str, Tensor], detections: List[Dict[str, Tensor]]) -> Tuple[Dict[str, Tensor], List[Dict[str, Tensor]]]:
         if self.training:
-            if self.e2e: 
-                return losses, detections, image_shapes, original_image_sizes, OrderedDict([ (f'{i}', feature) for i, feature in enumerate(features) ])
             return losses
-        if self.e2e:
-            return detections, image_shapes, original_image_sizes, OrderedDict([ (f'{i}', feature) for i, feature in enumerate(features) ])
         return detections
 
     def compute_loss(
@@ -694,7 +687,7 @@ class FCOS(nn.Module):
                 During testing, it returns list[BoxList] contains additional fields
                 like `scores`, `labels` and `mask` (for Mask R-CNN models).
         """
-        if self.training and not self.e2e:
+        if self.training:
             if targets is None:
                 raise ValueError("In training mode, targets should be passed")
             for target in targets:
@@ -756,24 +749,21 @@ class FCOS(nn.Module):
         num_anchors_per_level = [x.size(2) * x.size(3) for x in features]
 
         losses = {}
-        detections: List[Dict[str, Tensor]] = []
+        detections = self.postprocess_detections(head_outputs, anchors, num_anchors_per_level)
         if self.training:
             assert targets is not None
-            detections = self.postprocess_detections(head_outputs, anchors, num_anchors_per_level)
             # compute the losses
             losses = self.compute_loss(targets, head_outputs, anchors, num_anchors_per_level)
         else:
             # compute the detections
-            detections = self.postprocess_detections(head_outputs, anchors, num_anchors_per_level)
-            if not self.e2e:
-                detections = self.postprocess(detections, images.image_sizes, original_image_sizes)
+            detections = self.postprocess(detections, images.image_sizes, original_image_sizes)
 
         if torch.jit.is_scripting():
             if not self._has_warned:
                 warnings.warn("FCOS always returns a (Losses, Detections) tuple in scripting")
                 self._has_warned = True
             return losses, detections
-        return self.eager_outputs(losses, detections, images.image_sizes, original_image_sizes, features)
+        return self.eager_outputs(losses, detections)
 
 
 def resize_boxes(boxes: Tensor, original_size: List[int], new_size: List[int]) -> Tensor:

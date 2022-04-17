@@ -1,8 +1,8 @@
 from typing_extensions import OrderedDict
+from cv2 import decomposeHomographyMat
 import torch
-from typing import Callable, Dict, List, Tuple, Optional
 
-from torch import nn, Tensor
+from torch import inference_mode, nn, Tensor
 from fcos_utils.fcos import FCOS
 from mano_train.networks.handnet import HandNet
 
@@ -11,26 +11,33 @@ from .bridge import E2EBridge
 
 import torch.nn.functional as torch_f
 from datasets3d.queries import BaseQueries, TransQueries
+from a2j.a2j import A2JModel
+import torch.nn.functional as F
 
 
 #from .bridge import E2EBridge
 
-def load_pretrained_fcos(args):
+def load_pretrained_fcos(args, reload_detector=False):
     print("Loading pretrained detector")
-    detector = FCOS(num_classes=23, ext=False, e2e=True, nms_thresh=0.5)
-    checkpoint = torch.load(args.pretrained, map_location="cpu")
-    detector.load_state_dict(checkpoint["model"], strict=False)
+    detector = FCOS(num_classes=23, ext=False, nms_thresh=0.5)
+    
+    if reload_detector:
+        checkpoint = torch.load(args.pretrained_fcos, map_location="cpu")
+        detector.load_state_dict(checkpoint["model"], strict=False)
     
     for p in detector.parameters():
         p.requires_grad = False
     return detector
 
-# def load_pretrained_fpn(args):
-#     print("Loading pretrained detector")
-#     detector = 
-#     detector.load_state_dict(torch.load(args.pretrained), strict=False)
-#     return detector
-
+def load_pretrained_a2j(args, reload_a2j=False):
+    print("Loading pretrained a2j")
+    a2j = A2JModel(21, crop_height=176, crop_width=176)
+    if reload_a2j:
+        checkpoint = torch.load(args.pretrained_a2j, map_location="cpu")
+        a2j.load_state_dict(checkpoint["model"], strict=False)
+    for p in a2j.parameters():
+        p.requires_grad = False
+    return a2j
 
 class E2EHandNet(nn.Module):
     """
@@ -40,122 +47,86 @@ class E2EHandNet(nn.Module):
     def __init__(
         self,
         args,
+        reload_detector: bool = False,
+        reload_a2j: bool = False,
     ):
         super().__init__()
-        self.detector = load_pretrained_fcos(args)
+        self.detector = load_pretrained_fcos(args, reload_detector)
         self.detector.eval()
-
-        #self.detector = load_pretrained_fpn(args)
-        #self.detector.eval()
-
-        self.handnet_single = HandNet(
-                1024,
-                mano_neurons=args.hidden_neurons,
-                mano_root="misc/mano",
-                mano_comps=args.mano_comps,
-                mano_use_pca=args.mano_use_pca,
-                mano_use_shape=args.mano_use_shape,
-                mano_use_joints2d=args.mano_use_joints2d,
-        )
-
-        self.handnet = torch.nn.DataParallel(self.handnet_single) # if torch.cuda.device_count() > 1 else self.handnet_single
-        self.bridge = E2EBridge(out_channels=self.detector.backbone.out_channels)
+        self.a2j = load_pretrained_a2j(args, reload_a2j)
     
     def forward(
         self, 
-        images: List[Tensor],
-        target: Optional[List[Dict[str, Tensor]]] = None,
-        sample: Optional[List[Dict[str, Tensor]]] = None,
-        single: bool = False,
+        images,
+        depth_images=None,
+        targets=None,
+        jt_uvd_gt=None,
+        is_3D: bool = False,
+        is_detect: bool=False,
     ):
-        if single:
-            image_shapes = []
-            for img in images:
-                val = img.shape[-2:]
-                assert len(val) == 2
-            image_shapes.append((val[0], val[1]))
 
-            images, target = self.detector.transform(images, target)
-            features = self.detector.backbone(images.tensors) # N x Dict[str, Tensor]
-            boxes = [ list(sample['box'].reshape(-1, 1, 4)) for _ in range(len(features)) ]
+        if is_3D:
+            if self.training:
+                # A2J training
+                print('fill')
+            else:
+                # A2J inference
+                print('fill')
+        elif is_detect:
+            if self.training:
+                print('fill')
+                # detector training
+            else:
+                 print('fill')
+                # detector inference
         else:
-            detections, image_shapes, original_image_shapes, features = self.detector(images, None)
-            hand_mask = [(det['labels'] == 22) for det in detections ]
- 
-            feature_idx = []
-            sides = []
-            for det_idx, det in enumerate(detections):
-                feature_idx.append(det['feature_idx'][hand_mask[det_idx]])
-                sides.append(det['sides'][hand_mask[det_idx]])
+            # ensemble inference
+            final_results = torch.zeros((len(images), 21, 3))
             
-            boxes = [
-                [ det['boxes'][hand_mask[i]][ torch.where( feature_idx[i] == feat_idx) ] for i, det in enumerate(detections) ]
-                for feat_idx in range(len(features))
-            ]
-            # N x Dict[str, Tensor]
-        # in testing, truncate when > 1 hand is detected, fill when 0 hand is
-        sample, batch_idx, level_idx = self.bridge(sample, features, boxes, image_shapes, None if single else sides)
+            image_mask = torch.zeros((len(images)), dtype=torch.bool)
 
-        results = self.handnet(sample)
+            detections = self.detector(images, None)
+            images = torch.stack(images)
 
-        if self.training:
+            hand_mask = [(res_per_image['labels'] == 22) for res_per_image in detections ]
 
-            # compute 3d parameter module losses
-            losses_3d = {}
-            model_loss = None
+            depth_batch = []
+            crops = []
+            for img_idx, det_per_image in enumerate(detections):
+                boxes = det_per_image['boxes'][hand_mask[img_idx]]
+                
+                if len(boxes) == 0:
+                    crops.append(None)
+                    continue
+                if len(boxes) > 1:
+                    boxes = boxes[:1]
+                image_mask[img_idx] = True
 
-            results_names_dict = {
-                #"verts": TransQueries.verts3d,
-                "joints": TransQueries.joints3d,
-                #"joints2d": TransQueries.joints2d,
-            }
+                box = boxes.reshape(4).to(torch.int64)
 
-            for r_name in results_names_dict.keys():
-                gt = sample[results_names_dict[r_name]].cuda()
-                losses_3d[r_name] = torch_f.mse_loss(
-                    results[r_name] / 1000., gt.float() / 1000.
-                ).float()
+                # pad box
+                w = box[2] - box[0]
+                h = box[3] - box[1]
+                percent = 0.3
+                box[0] = max(0, box[0] - percent * (w))
+                box[1] = max(0, box[1] - percent * (h))
+                box[2] = min(images[img_idx].shape[2], box[2] + percent * (w))
+                box[3] = min(images[img_idx].shape[1], box[3] + percent * (h))
 
-            # shape regularizer to avg shape: 0 [Nx10]
-            losses_3d["shape_reg"] = torch_f.mse_loss(
-                results["shape"], torch.zeros_like(results["shape"])
-            ).float()
+                crops.append(box)
+                try:
+                    depth_crop = F.interpolate(depth_images[img_idx, :, box[1]:box[3] + 1, box[0]:box[2] + 1].unsqueeze(0), size=(176, 176)).squeeze(0)
+                except:
+                    print("hi")
+                depth_batch.append(depth_crop)
 
-            loss_3d = 1000 * sum(losses_3d.values())
-            # training detector
+            if len(depth_batch) == 0:
+                return final_results, torch.zeros_like(depth_images), torch.zeros((len(images), 4))
 
-            # loss_det = sum(loss for loss in det_losses.values())
+            depth_batch = torch.stack(depth_batch)
+            crops = torch.stack(crops)
 
-            # total_losses = {k: v for d in [det_losses, losses_3d] for k, v in d.items()}
-            # total_losses['total_loss'] = loss_3d + loss_det
-            
-            total_losses = {k: v for k, v in losses_3d.items()}
-            total_losses['total_loss'] = loss_3d
+            a2j_pred = self.a2j(depth_batch)
+            final_results[image_mask] = a2j_pred
 
-            return total_losses, results, sample
-        else:
-            detections = self.detector.postprocess(detections, image_shapes, original_image_shapes)
-            return results, detections, batch_idx, level_idx, boxes
-
-            # original_image_sizes: List[Tuple[int, int]] = []
-            # for img in images:
-            #     val = img.shape[-2:]
-            #     assert len(val) == 2
-            #     original_image_sizes.append((val[0], val[1]))
-
-
-            # images, _ = self.detector.transform(images, None)
-            # with torch.no_grad():
-            #     features = self.detector.backbone(images.tensors)
-            # features.pop('pool', None)
-            # image_shapes = images.image_sizes
-
-            # sample["box"] = self.detector.postprocess_single(sample["box"], original_image_sizes[0], image_shapes[0])
-
-            # boxes = [
-            #     sample["box"].cuda()
-            #     for feat_idx in range(len(features))
-            # ]
-            # target, batch_idx, level_idx = self.bridge(sample, features, boxes, image_shapes, None)
-
-            # results = self.handnet(target)
+            return final_results, depth_batch, crops

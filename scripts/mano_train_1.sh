@@ -1,0 +1,2 @@
+CUDA_VISIBLE_DEVICES=1 nohup python3 trainval_net_mano.py --model_name=dexycb --net=e2e -bs=32 --lr=1e-4 --s=3 --epoch=45 --wd=0.0005 --lr-steps=30 -j=8 --optimizer=adamw > scripts/output/mano_train_2.log 2>&1 &
+echo $! > scripts/output/mano_train_pid_2.txt

@@ -2,13 +2,12 @@ import argparse
 import os
 
 from dex_ycb_toolkit.coco_eval import COCOEvaluator
+from datasets3d.a2jdataset import A2JDataset
 
 
 def main():
-
-  coco_eval = COCOEvaluator('s0_test')
-  os.makedirs('out/', exist_ok=True)
-  coco_eval.evaluate('results.json', out_dir='out/', tasks=['bbox'])
+  data = A2JDataset()
+  test = data[310549]
 
 
 if __name__ == '__main__':

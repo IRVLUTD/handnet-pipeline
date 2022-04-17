@@ -1,5 +1,6 @@
 import random
 import traceback
+import cv2
 
 from dex_ycb_toolkit.factory import get_dataset
 from torch.utils.data import Dataset
@@ -46,8 +47,8 @@ class E2EDataset(Dataset):
     def load_3d(self, train):
         split = 'train' if train else 'test'
 
-        if os.path.exists(f'data/e2e/cache/{split}_3d.pt'):
-            dict_3d = torch.load(f'data/e2e/cache/{split}_3d.pt')
+        if os.path.exists(f'data/e2e/cache/{split}_3d_a2j.pt'):
+            dict_3d = torch.load(f'data/e2e/cache/{split}_3d_a2j.pt')
             self.meshes = dict_3d['meshes']
             self.joints3d = dict_3d['joints3d']
             return
@@ -77,6 +78,9 @@ class E2EDataset(Dataset):
         beta_left = torch.zeros((len(self), 10))
         beta_right = torch.zeros((len(self), 10))
 
+        trans_left = torch.zeros((len(self), 3))
+        trans_right = torch.zeros((len(self), 3))
+
         if os.path.exists(f'data/e2e/cache/{split}_labels_3d.pt'):
             labels_3d = torch.load(f'data/e2e/cache/{split}_labels_3d.pt')
             pose_left = labels_3d['pose']['left']
@@ -85,6 +89,8 @@ class E2EDataset(Dataset):
             beta_right = labels_3d['beta']['right']
             mask_left = labels_3d['mask']['left']
             mask_right = labels_3d['mask']['right']
+            trans_left = labels_3d['trans']['left']
+            trans_right = labels_3d['trans']['right']
         else:
             for idx, i in enumerate(tqdm((self.refined_idx))):
                 sample = self.data[i]
@@ -100,10 +106,12 @@ class E2EDataset(Dataset):
                     pose_left[idx] = pose_d[0:48]
                     beta_left[idx] = betas
                     mask_left[idx] = True
+                    trans_left[idx] = pose_d[48:51]
                 else:
                     pose_right[idx] = pose_d[0:48]
                     beta_right[idx] = betas
                     mask_right[idx] = True
+                    trans_right[idx] = pose_d[48:51]
 
         # debug
         labels_3d = {
@@ -118,13 +126,17 @@ class E2EDataset(Dataset):
             'mask': {
                 'left': mask_left,
                 'right': mask_right
+            },
+            'trans':{
+                'left': trans_left,
+                'right': trans_right
             }
         }
 
         torch.save(labels_3d, f'data/e2e/cache/{split}_labels_3d.pt')
-                
-        verts3d_right, joints3d_right = self.mano_layer_right(pose_right[mask_right,:], beta_right[mask_right,:])
-        verts3d_left, joints3d_left = self.mano_layer_left(pose_left[mask_left,:], beta_left[mask_left,:])
+
+        verts3d_right, joints3d_right = self.mano_layer_right(pose_right[mask_right,:], beta_right[mask_right,:], trans_right[mask_right, :])
+        verts3d_left, joints3d_left = self.mano_layer_left(pose_left[mask_left,:], beta_left[mask_left,:], trans_left[mask_left, :])
 
         self.joints3d[mask_right] = joints3d_right[:,:,:]
         self.meshes[mask_right] = verts3d_right[:,:,:]
@@ -136,13 +148,17 @@ class E2EDataset(Dataset):
             'meshes': self.meshes,
             'joints3d': self.joints3d
         }
-        torch.save(dict_3d, f'data/e2e/cache/{split}_3d.pt')
+        torch.save(dict_3d, f'data/e2e/cache/{split}_3d_a2j.pt')
         
 
     def get_sample(self, idx):
         source_sample = self.data[self.refined_idx[idx]]
 
+        paras = np.array(list(source_sample['intrinsics'].values()))
+
+
         im = Image.open(source_sample['color_file'])
+        depth = cv2.imread(source_sample['depth_file'], cv2.IMREAD_ANYDEPTH) / 1000.
         
         # 3D data
         verts3d = self.meshes[idx]
@@ -223,7 +239,7 @@ class E2EDataset(Dataset):
 
         sample["box"] = torch.tensor(handbox, dtype=torch.float32)
         
-        return self.transform(im), target, sample
+        return self.transform(im), target, sample, depth[np.newaxis, :].astype(np.float32), paras.astype(np.float32)
 
     def get_height_and_width(self,idx):
         source_sample = self.data[self.refined_idx[idx]]

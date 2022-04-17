@@ -82,6 +82,7 @@ class DetectDataset(Dataset):
         box_info = torch.as_tensor(handinfo, dtype=torch.float32)
 
         target = {}
+        target['dexycb_id'] = torch.tensor([self.refined_idx[img_id]], dtype=torch.int64)
         target["image_id"] = image_id
         target["boxes"] = boxes
         target["labels"] = labels
@@ -98,5 +99,5 @@ class DetectDataset(Dataset):
             traceback.print_exc()
             print("Encountered error processing sample {}".format(idx))
             random_idx = random.randint(0, len(self))
-            sample = self.get_sample(random_idx, self.queries)
+            sample = self.get_sample(random_idx)
         return sample

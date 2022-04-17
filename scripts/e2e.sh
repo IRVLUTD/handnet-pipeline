@@ -1,2 +1,0 @@
-CUDA_VISIBLE_DEVICES=1 nohup python3 trainval_net_e2e.py --model_name=dexycb --net=e2e -bs=32 --lr=1e-3 --s=1 --epoch=35 --wd=0 --lr-steps=30 -j=8 > scripts/output/e2e.log 2>&1 &
-echo $! > scripts/output/e2e.txt

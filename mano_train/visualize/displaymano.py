@@ -21,12 +21,15 @@ def visualize_batch(
     faces_left=None,
     max_rows=4,
     joint_idxs=False,
+    no_2d=False
 ):
     images = None
     if BaseQueries.features in sample:
         features = sample[BaseQueries.features]
         batch_nb = min(features.shape[0], max_rows)
-
+    if TransQueries.images in sample:
+        images = sample[TransQueries.images].cpu()
+        batch_nb = min(images.shape[0], max_rows)
 
     # Get hand verts
     # if TransQueries.verts3d in sample:
@@ -86,30 +89,15 @@ def visualize_batch(
     else:
         sides = None
         idx = None
-    if TransQueries.joints2d in sample:
+    if TransQueries.joints2d in sample and not no_2d:
         gt_batchjoints2d = sample[TransQueries.joints2d].cpu().numpy()
     else:
         gt_batchjoints2d = None
-    if "joints2d" in results:
+    if "joints2d" in results and not no_2d:
         pred_batchjoints2d = results["joints2d"].detach().cpu().numpy()
     else:
         pred_batchjoints2d = None
     # Create figure
-    if "center3d" in results:
-        # Add absolute gt offset to predictions
-        center3d_preds = results["center3d"].detach().cpu().numpy()
-        if pred_batchjoints3d is not None:
-            pred_batchjoints3d = pred_batchjoints3d + center3d_preds[:, np.newaxis]
-        if pred_batchverts3d is not None:
-            pred_batchverts3d = pred_batchverts3d + center3d_preds[:, np.newaxis]
-
-    if TransQueries.center3d in sample and "center3d" in results:
-        # Add absolute gt offset to ground truth
-        center3d_gt = sample[TransQueries.center3d].numpy()
-
-
-        if gt_batchjoints3d is not None:
-            gt_batchjoints3d = gt_batchjoints3d + center3d_gt[:, np.newaxis]
     for row_idx in range(batch_nb):
         # Show input image
         if sides is not None:
@@ -130,21 +118,10 @@ def visualize_batch(
                 visualize_joints_2d(ax, pred_joints2d, joint_idxs=False)
             if side is not None:
                 if side is not None:
-                    side_text = 'Left' if str(side.numpy()) == '0' else 'Right'
-                    ax.set_title(f"{str(idxs[row_idx].numpy())} - {side_text}")
+                    side_text = 'Left' if str(side.cpu().numpy()) == '0' else 'Right'
+                    ax.set_title(f"{str(idxs[row_idx].cpu().numpy())} - {side_text}")
             ax.axis("off")
 
-            # Show input image refine
-            if refine:
-                ax = fig.add_subplot(
-                    batch_nb * row_factor,
-                    col_nb,
-                    (row_idx * row_factor + 1) * col_nb + 1,
-                )
-                ax.imshow(input_img)
-                if side is not None:
-                    side_text = 'Left' if str(side.numpy()) == '0' else 'Right'
-                    ax.set_title(f"{str(idxs[row_idx].numpy())} - side_text")
             ax.axis("off")
 
         # Get sample infos
