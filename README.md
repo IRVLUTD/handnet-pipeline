@@ -2,13 +2,12 @@
 
 **In development**
  - `demo.py`
- - `trainval_net_e2e.py` still needs FCOS training loop (currently implemented in `pretrain_fcos.py`)
- - Naming of output files for `trainval_net_e2e.py` is inaccurate
- - DexYCB metrics of E2E-HandNet
- - Reorganization of file names and functions
+ - `trainval_net_e2e.py` (end-to-end training)
+    - Naming of output files for `trainval_net_e2e.py` is inaccurate
+ - Cleanup MANO artifacts
 
 **Completed**
  - `trainval_net_fpn.py` & `pretrain_fcos.py` (detection training + test)
- - MANO network training from FPN outputs (training)
+ - `trainval_net_a2j.py` (a2j training + test)
  - Data preprocessing and caching
-    - Note: caching of feature maps is not implemented yet
+ - `trainval_net_e2e.py` (end-to-end test)
