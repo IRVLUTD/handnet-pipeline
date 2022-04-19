@@ -27,9 +27,8 @@ if __name__ == "__main__":
     all_joints_uvd = np.zeros((len(filenames), 21, 3))
 
     with torch.inference_mode():
-        for idx, (depth_image_filename, color_im_filename) in enumerate(tqdm(filenames)):
-            color_im = cv2.imread(color_im_filename)
-            depth_image = cv2.imread(depth_image_filename, cv2.IMREAD_ANYDEPTH) / 1000. #be sure this is in millimeters
+        for idx, (depth_image_filename) in enumerate(tqdm(filenames)):
+            depth_image = cv2.imread(depth_image_filename, cv2.IMREAD_ANYDEPTH) / 1000. #be sure this is in millimeters (uint16 precision)
             depth_image = depth_image[np.newaxis, :].astype(np.float32)
             depth_image = depth_image
             depth_image = torch.from_numpy(depth_image).cuda()
