@@ -20,3 +20,7 @@ cd ..
 
 cd manopth
 pip install -e .
+
+# rospy dependency with conda
+echo 'export PYTHONPATH=$PYTHONPATH:/opt/ros/noetic/lib/python3/dist-packages' >> ~/.bashrc
+echo 'export PYTHONPATH=$PYTHONPATH:/opt/ros/noetic/lib/python3/dist-packages' >> ~/.zshrc
