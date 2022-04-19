@@ -1,5 +1,7 @@
 scripts/output/*
+test/
 
+/*.npy
 
 misc/
 datasymlinks/
