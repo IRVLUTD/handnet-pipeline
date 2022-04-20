@@ -8,8 +8,11 @@
 
 import torch
 import torch.nn.parallel
+import torch.nn.functional as F
+import torchvision.transforms as Transforms
 import torch.backends.cudnn as cudnn
 import torch.utils.data
+from e2e_handnet.e2e_handnet import E2EHandNet
 import message_filters
 import cv2
 import torch.nn as nn
@@ -25,16 +28,8 @@ import copy
 
 from sensor_msgs.msg import Image, CameraInfo
 from cv_bridge import CvBridge, CvBridgeError
+from utils.vistool import VisualUtil
 lock = threading.Lock()
-
-
-def compute_xyz(depth_img, fx, fy, px, py, height, width):
-    indices = np.indices((height, width), dtype=np.float32).transpose(1,2,0)
-    z_e = depth_img
-    x_e = (indices[..., 1] - px) * z_e / fx
-    y_e = (indices[..., 0] - py) * z_e / fy
-    xyz_img = np.stack([x_e, y_e, z_e], axis=-1) # Shape: [H x W x 3]
-    return xyz_img
 
 
 class ImageListener:
@@ -43,17 +38,19 @@ class ImageListener:
 
         self.network = network
         self.cv_bridge = CvBridge()
+        self.vistool = VisualUtil('dexycb')
 
         self.im = None
         self.depth = None
         self.rgb_frame_id = None
         self.rgb_frame_stamp = None
+        self.empty_label = np.zeros((176, 176, 3), dtype=np.uint8)
+        
 
         # initialize a node
         rospy.init_node("pose_rgb")
+        self.box_pub = rospy.Publisher('box_label', Image, queue_size=10)
         self.label_pub = rospy.Publisher('pose_label', Image, queue_size=10)
-        self.image_pub = rospy.Publisher('pose_image', Image, queue_size=10)
-        self.feature_pub = rospy.Publisher('pose_feature', Image, queue_size=10)
 
 
         self.base_frame = 'measured/base_link'
@@ -65,11 +62,7 @@ class ImageListener:
 
         # update camera intrinsics
         intrinsics = np.array(msg.K).reshape(3, 3)
-        self.fx = intrinsics[0, 0]
-        self.fy = intrinsics[1, 1]
-        self.px = intrinsics[0, 2]
-        self.py = intrinsics[1, 2]
-        print(intrinsics)
+        self.paras = np.array([intrinsics[0, 0], intrinsics[1, 1], intrinsics[0, 2] ,intrinsics[1, 2]])
 
         queue_size = 1
         slop_seconds = 0.1
@@ -92,12 +85,6 @@ class ImageListener:
 
         im = self.cv_bridge.imgmsg_to_cv2(rgb, 'bgr8')
 
-        # rescale image if necessary
-        if cfg.TEST.SCALES_BASE[0] != 1:
-            im_scale = cfg.TEST.SCALES_BASE[0]
-            im = pad_im(cv2.resize(im, None, None, fx=im_scale, fy=im_scale, interpolation=cv2.INTER_LINEAR), 16)
-            depth_cv = pad_im(cv2.resize(depth_cv, None, None, fx=im_scale, fy=im_scale, interpolation=cv2.INTER_NEAREST), 16)
-
         with lock:
             self.im = im.copy()
             self.depth = depth_cv.copy()
@@ -115,92 +102,57 @@ class ImageListener:
             rgb_frame_id = self.rgb_frame_id
             rgb_frame_stamp = self.rgb_frame_stamp
 
-        print('===========================================')
+        # run network
+        with torch.inference_mode():
+            im_color = [torch.from_numpy(cv2.cvtColor(im_color, cv2.COLOR_BGR2RGB).transpose(2, 0, 1).astype(np.float32) / 255.0).cuda()]
+            depth_img = torch.from_numpy(depth_img).unsqueeze(0).unsqueeze(0).cuda()
+            keypoint_pred, depth_im, detections = self.network(im_color, depth_images=depth_img)
 
-        # bgr image
-        im = im_color.astype(np.float32)
-        im_tensor = torch.from_numpy(im) / 255.0
-        pixel_mean = torch.tensor(cfg.PIXEL_MEANS / 255.0).float()
-        im_tensor -= pixel_mean
-        image_blob = im_tensor.permute(2, 0, 1)
-        sample = {'image_color': image_blob.unsqueeze(0)}
+        if detections.max() == 0:
+            label_msg = self.cv_bridge.cv2_to_imgmsg(self.empty_label)
+            label_msg.header.stamp = rgb_frame_stamp
+            label_msg.header.frame_id = rgb_frame_id
+            label_msg.encoding = 'rgb8'
+            self.label_pub.publish(label_msg)
+            self.box_pub.publish(label_msg)
+            return
 
-        if cfg.INPUT == 'DEPTH' or cfg.INPUT == 'RGBD':
-            height = im_color.shape[0]
-            width = im_color.shape[1]
-            xyz_img = compute_xyz(depth_img, self.fx, self.fy, self.px, self.py, height, width)
-            depth_blob = torch.from_numpy(xyz_img).permute(2, 0, 1)
-            sample['depth'] = depth_blob.unsqueeze(0)
+        # unbatch
+        detection = detections[0]
+        keypoint_pred = keypoint_pred[0]
+        depth_im = depth_im[0]
 
-        out_label, out_label_refined = test_sample(sample, self.network, self.network_crop)
+        image_to_draw = Transforms.ToPILImage()(im_color[0]).convert('RGB')
+        image_to_draw = np.array(image_to_draw)
+        cv2.rectangle(image_to_draw, (detection[0], detection[1]), (detection[2], detection[3]), (0, 255, 0), 1)
+        bbox_msg = self.cv_bridge.cv2_to_imgmsg(image_to_draw.astype(np.uint8))
+        bbox_msg.header.stamp = rgb_frame_stamp
+        bbox_msg.header.frame_id = rgb_frame_id
+        bbox_msg.encoding = 'rgb8'
+        self.box_pub.publish(bbox_msg)
 
-        # publish segmentation mask
-        label = out_label[0].cpu().numpy()
+        color_im_crop = F.interpolate(im_color[0][:,  detection[1]:detection[3] + 1, detection[0]:detection[2] + 1].unsqueeze(0), size=(176, 176)).squeeze(0)
+        color_im_crop = Transforms.ToPILImage()(color_im_crop).convert('RGB')
+        color_im_crop = np.array(color_im_crop)
+
+        # visualize and publish
+        label = self.vistool.plot(color_im_crop, None, None, jt_uvd_pred=keypoint_pred.cpu().numpy(), return_image=True)
         label_msg = self.cv_bridge.cv2_to_imgmsg(label.astype(np.uint8))
         label_msg.header.stamp = rgb_frame_stamp
         label_msg.header.frame_id = rgb_frame_id
-        label_msg.encoding = 'mono8'
+        label_msg.encoding = 'rgb8'
         self.label_pub.publish(label_msg)
-
-        num_object = len(np.unique(label)) - 1
-        print('%d objects' % (num_object))
-
-        if out_label_refined is not None:
-            label_refined = out_label_refined[0].cpu().numpy()
-            label_msg_refined = self.cv_bridge.cv2_to_imgmsg(label_refined.astype(np.uint8))
-            label_msg_refined.header.stamp = rgb_frame_stamp
-            label_msg_refined.header.frame_id = rgb_frame_id
-            label_msg_refined.encoding = 'mono8'
-            self.label_refined_pub.publish(label_msg_refined)
-
-        # publish segmentation images
-        im_label = visualize_segmentation(im_color[:, :, (2, 1, 0)], label, return_rgb=True)
-        rgb_msg = self.cv_bridge.cv2_to_imgmsg(im_label, 'rgb8')
-        rgb_msg.header.stamp = rgb_frame_stamp
-        rgb_msg.header.frame_id = rgb_frame_id
-        self.image_pub.publish(rgb_msg)
-
-        if out_label_refined is not None:
-            im_label_refined = visualize_segmentation(im_color[:, :, (2, 1, 0)], label_refined, return_rgb=True)
-            rgb_msg_refined = self.cv_bridge.cv2_to_imgmsg(im_label_refined, 'rgb8')
-            rgb_msg_refined.header.stamp = rgb_frame_stamp
-            rgb_msg_refined.header.frame_id = rgb_frame_id
-            self.image_refined_pub.publish(rgb_msg_refined)
 
 
 def parse_args():
     """
     Parse input arguments
     """
-    parser = argparse.ArgumentParser(description='Test a PoseCNN network')
-    parser.add_argument('--gpu', dest='gpu_id', help='GPU id to use',
-                        default=0, type=int)
-    parser.add_argument('--instance', dest='instance_id', help='PoseCNN instance id to use',
-                        default=0, type=int)
-    parser.add_argument('--pretrained', dest='pretrained',
-                        help='initialize with pretrained checkpoint',
-                        default=None, type=str)
-    parser.add_argument('--pretrained_crop', dest='pretrained_crop',
-                        help='initialize with pretrained checkpoint for crops',
-                        default=None, type=str)
-    parser.add_argument('--cfg', dest='cfg_file',
-                        help='optional config file', default=None, type=str)
-    parser.add_argument('--dataset', dest='dataset_name',
-                        help='dataset to train on',
-                        default='shapenet_scene_train', type=str)
-    parser.add_argument('--rand', dest='randomize',
-                        help='randomize (do not use a fixed seed)',
-                        action='store_true')
-    parser.add_argument('--network', dest='network_name',
-                        help='name of the network',
-                        default=None, type=str)
-    parser.add_argument('--background', dest='background_name',
-                        help='name of the background file',
-                        default=None, type=str)
-
-    if len(sys.argv) == 1:
-        parser.print_help()
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description='Demo E2E-HandNet on ROS')
+    parser.add_argument('--pretrained_fcos', dest='pretrained_fcos', help='Pretrained FCOS model',
+                        default='models/fcos_handobj_100K_res34/detector_1_25.pth', type=str)
+    parser.add_argument('--pretrained_a2j', dest='pretrained_a2j', help='Pretrained A2J model',
+                        default='models/a2j_dexycb_1/a2j_35.pth', type=str)
 
     args = parser.parse_args()
     return args
@@ -208,10 +160,10 @@ def parse_args():
 
 if __name__ == '__main__':
 
-    network = None
-    #network = torch.nn.DataParallel(network, device_ids=[0]).cuda(device=cfg.device)
+    args = parse_args()
+    network = E2EHandNet(args, reload_detector=True, reload_a2j=True).cuda().eval()
     cudnn.benchmark = True
-    network.eval()
+    #network.eval()
 
     # image listener
     listener = ImageListener(network)

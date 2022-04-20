@@ -19,7 +19,7 @@ import torch.nn.functional as F
 
 def load_pretrained_fcos(args, reload_detector=False):
     print("Loading pretrained detector")
-    detector = FCOS(num_classes=23, ext=False, nms_thresh=0.5)
+    detector = FCOS(num_classes=3, ext=False, nms_thresh=0.5)
     
     if reload_detector:
         checkpoint = torch.load(args.pretrained_fcos, map_location="cpu")
@@ -88,7 +88,7 @@ class E2EHandNet(nn.Module):
             detections = self.detector(images, None)
             images = torch.stack(images)
 
-            hand_mask = [(res_per_image['labels'] == 22) for res_per_image in detections ]
+            hand_mask = [(res_per_image['labels'] == 2) for res_per_image in detections ]
 
             depth_batch = []
             crops = []
