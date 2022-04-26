@@ -69,7 +69,7 @@ class FCOSHead(nn.Module):
             if len(targets_per_image["labels"]) == 0:
                 gt_classes_targets = targets_per_image["labels"].new_zeros((len(matched_idxs_per_image),))
                 gt_boxes_targets = targets_per_image["boxes"].new_zeros((len(matched_idxs_per_image), 4))
-                gt_hand_lr_targets = targets_per_image["hand_lr"].new_zeros((len(matched_idxs_per_image),))
+                gt_hand_lr_targets = targets_per_image["box_info"][:, 1].new_zeros((len(matched_idxs_per_image),))
                 if self.ext:
                     gt_hand_contact_state_targets = targets_per_image["hand_contact_state"].new_zeros((len(matched_idxs_per_image), 5))
                     gt_hand_dxdy_targets = targets_per_image["hand_dxdy"].new_zeros((len(matched_idxs_per_image), 3))

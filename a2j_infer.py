@@ -5,7 +5,6 @@ import cv2
 import numpy as np
 import torch
 
-from utils.utils import vis_minibatch
 from utils.vistool import VisualUtil
 
 

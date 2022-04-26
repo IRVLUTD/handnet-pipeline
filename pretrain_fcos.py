@@ -147,7 +147,7 @@ def main(args):
 
     print("Creating model")
     #backbone = backbonefpn
-    model = FCOS(num_classes=23, ext=False, nms_thresh=0.5)
+    model = FCOS(num_classes=1, ext=False, nms_thresh=0.5)
     model.to(device)
 
     hosting_folder = os.path.join(args.output_dir, "hosting")
@@ -239,7 +239,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    args.output_dir = args.save_dir + "/" + args.net + "_" + args.model_name
+    args.output_dir = args.save_dir + "/" + args.net + "_" + args.model_name + "_" + str(args.session)
     print(f'\n---------> model output_dir = {args.output_dir}\n')
 
     os.makedirs(args.output_dir, exist_ok=True)

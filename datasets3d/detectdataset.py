@@ -41,8 +41,9 @@ class DetectDataset(Dataset):
         img_id = idx
 
         labels = []
-        boxes = np.zeros((len(sample['ycb_ids'] + [255]), 4))
+        boxes = np.zeros((1, 4))
 
+        # only use hand bbox
         label = np.load(sample['label_file'])
         for idx, y in enumerate(sample['ycb_ids'] + [255]):
             mask = label['seg'] == y
@@ -53,11 +54,11 @@ class DetectDataset(Dataset):
             bbox = np.array(pycocotools.mask.toBbox(rle).tolist())
             bbox[2:] += bbox[:2]
             if y == 255:
-                category_id = 22
+                category_id = 0
             else:
-                category_id = y
+                continue
             labels.append(category_id)
-            boxes[idx] = bbox
+            boxes[0] = bbox
 
         indexes = []
         for idx, i in enumerate(boxes):
@@ -70,7 +71,7 @@ class DetectDataset(Dataset):
 
         idx_hand = -1
         for idx in range(len(labels)):
-            if labels[idx] == 22:
+            if labels[idx] == 0:
                 idx_hand = idx
         if idx_hand >= 0:
             handinfo[idx_hand, 1] = 1 if sample['mano_side'] == 'right' else 0
@@ -87,7 +88,6 @@ class DetectDataset(Dataset):
         target["boxes"] = boxes
         target["labels"] = labels
         target["box_info"] = box_info
-
         
         
         return self.transform(im), target
