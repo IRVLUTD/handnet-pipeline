@@ -7,20 +7,12 @@ import numpy as np
 
 import torch
 import torch.utils.data
-from torch import log_, nn
-import torchvision
 import torchvision.models.detection
 
 
 import pickle
 
 from tqdm import tqdm, trange
-
-from fpn_utils.faster_rcnn_fpn import FasterRCNN
-
-from model.utils.net_utils import save_checkpoint
-import fpn_utils.utils as utils
-import math, sys
 
 from fcos_utils.fcos import FCOS
 from mano_train.evaluation.evalutils import AverageMeters
@@ -147,7 +139,7 @@ def main(args):
 
     print("Creating model")
     #backbone = backbonefpn
-    model = FCOS(num_classes=1, ext=False, nms_thresh=0.5)
+    model = FCOS(num_classes=2, ext=False, nms_thresh=0.5)
     model.to(device)
 
     hosting_folder = os.path.join(args.output_dir, "hosting")
@@ -200,12 +192,10 @@ def main(args):
                 "args": args,
                 "epoch": epoch,
             }
-            if args.det_amp:
+            if args.amp:
                 checkpoint["scaler"] = scaler.state_dict()
             save_name = os.path.join(output_dir, f'detector_{args.session}_{epoch}.pth')
             torch.save(checkpoint, save_name)
-            if epoch == args.det_epochs:
-                args.pretrained_fcos = save_name
 
         train_dict = {
             meter_name: meter.avg

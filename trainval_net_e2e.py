@@ -96,9 +96,7 @@ def train_one_epoch_detect(
             loss_dict = model(images, targets)
             losses = sum(loss for loss in loss_dict.values())
 
-        losses_reduced = sum(loss for loss in loss_dict.values())
-
-        loss_value = losses_reduced.item()
+        loss_value = losses.item()
 
         if not math.isfinite(loss_value):
             print(f"Loss is {loss_value}, stopping training")
@@ -119,7 +117,7 @@ def train_one_epoch_detect(
 
         for key, val in loss_dict.items():
             if val is not None:
-                avg_meters.add_loss_value(key, val)
+                avg_meters.add_loss_value(key, val.item())
 
         time_meters.add_loss_value("batch_time", time.time() - end)
         avg_meters.add_loss_value("total_loss", loss_value)

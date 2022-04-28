@@ -1,2 +1,2 @@
-CUDA_VISIBLE_DEVICES=1 nohup python3 pretrain_fcos.py --model_name dexycb --net=fcos -bs=2 --lr=0.00125 --s=2 --amp --epoch=25 > scripts/output/fcos_pretrain.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python3 pretrain_fcos.py --model_name dexycb --net=fcos -bs=2 --lr=0.00125 --s=2 --amp --epoch=45 -j=8 > scripts/output/fcos_pretrain.log 2>&1 &
 echo $! > scripts/output/fcos_pretrain_pid.txt

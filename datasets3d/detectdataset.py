@@ -54,7 +54,7 @@ class DetectDataset(Dataset):
             bbox = np.array(pycocotools.mask.toBbox(rle).tolist())
             bbox[2:] += bbox[:2]
             if y == 255:
-                category_id = 0
+                category_id = 1
             else:
                 continue
             labels.append(category_id)
@@ -71,7 +71,7 @@ class DetectDataset(Dataset):
 
         idx_hand = -1
         for idx in range(len(labels)):
-            if labels[idx] == 0:
+            if labels[idx] == 1:
                 idx_hand = idx
         if idx_hand >= 0:
             handinfo[idx_hand, 1] = 1 if sample['mano_side'] == 'right' else 0
