@@ -4,7 +4,7 @@ import plotly.offline as py
 import plotly.tools as pytools
 import plotly.graph_objs as go
 
-from mano_train.exputils import logutils
+from utils.exputils import logutils
 
 
 class Monitor:

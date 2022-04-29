@@ -18,18 +18,17 @@ import cv2
 from parso import parse
 from datasets3d.a2jdataset import uvd2xyz, xyz2uvd
 from fcos_utils.fcos import FCOS
-from trainval_net_mano import prepare_images
 from utils.argutils import parse_3d_args, parse_e2e_args
 import torch, os, time, datetime
 from utils.hpe_eval import hpe_evaluate, hpe_plot
 from utils.utils import get_e2e_loaders, vis_minibatch
 from e2e_handnet.e2e_handnet import E2EHandNet
-from mano_train.evaluation.zimeval import EvalUtil
+from utils.evaluation.zimeval import EvalUtil
 from progress.bar import Bar as Bar
-from mano_train.exputils.monitoring import Monitor
-from mano_train.evaluation.evalutils import AverageMeters
+from utils.exputils.monitoring import Monitor
+from utils.evaluation.evalutils import AverageMeters
 from datasets3d.queries import TransQueries
-from mano_train.visualize import displaymano
+from utils.visualize import displaymano
 import pickle, numpy as np
 import json
 from tqdm import tqdm
@@ -373,7 +372,3 @@ if __name__ == "__main__":
     args.output_dir = os.path.join(model_output_dir, 'detector')
     os.makedirs(args.output_dir, exist_ok=True)
     detect_main(args)
-
-    args.output_dir = os.path.join(model_output_dir, 'e2e')
-    os.makedirs(args.output_dir, exist_ok=True)
-    mano_main(args)

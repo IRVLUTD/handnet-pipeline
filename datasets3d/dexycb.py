@@ -1,6 +1,3 @@
-from collections import OrderedDict, defaultdict
-import json
-from functools import lru_cache, wraps
 import math
 import os
 import pickle
@@ -10,21 +7,15 @@ import random
 from matplotlib import pyplot as plt
 import numpy as np
 from PIL import Image, ImageFile
-from scipy.spatial.distance import cdist
-from scipy.io import loadmat
 import torch
 from torch.nn.modules.module import T
-import trimesh
-from tqdm import tqdm
 import sys
 from manopth.manolayer import ManoLayer
 
 from datasets3d.queries import (BaseQueries, TransQueries,
                                         get_trans_queries)
-from mano.webuser.smpl_handpca_wrapper_HAND_only import load_model as load_mano_model
 from dex_ycb_toolkit.factory import get_dataset
 import cv2
-from mano_train.demo.preprocess import preprocess_frame
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 

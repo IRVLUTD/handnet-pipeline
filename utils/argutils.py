@@ -76,10 +76,6 @@ def parse_e2e_args(parser):
     return args
 
 
-def parse_3d_args(parser):
-    from mano_train.options.nets3dopts import add_nets3d_opts
-    add_nets3d_opts(parser)
-
 def parse_a2j_args(parser):
     parser.add_argument('--lr-step-size', default=10, type=int)
 

@@ -2,9 +2,9 @@
 
 from dex_ycb_toolkit.hpe_eval import HPEEvaluator
 import os, pickle
-from mano_train.exputils.monitoring import Monitor
+from utils.exputils.monitoring import Monitor
 import matplotlib.pyplot as plt
-from mano_train.visualize.displaymano import *
+from utils.visualize.displaymano import *
 
 
 def main(max_epoch, eval):

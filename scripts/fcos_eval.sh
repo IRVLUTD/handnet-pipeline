@@ -1,2 +1,2 @@
-CUDA_VISIBLE_DEVICES=1 nohup python3 pretrain_fcos.py --model_name=dexycb --net=fcos -r=models/fcos_dexycb/detector_1_25.pth --test-only > scripts/output/fcos_eval.log 2>&1 &
+CUDA_VISIBLE_DEVICES=1 nohup python3 trainval_net_fcos.py --model_name=dexycb --net=fcos -r=models/fcos_dexycb/detector_1_25.pth --test-only > scripts/output/fcos_eval.log 2>&1 &
 echo $! > scripts/output/fcos_eval_pid.txt

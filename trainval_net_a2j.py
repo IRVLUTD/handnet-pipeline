@@ -12,25 +12,18 @@
 # Use pytorch3d to render mesh and disable ray
 
 import sys
-from parso import parse
-from tomlkit import key
-from fcos_utils.fcos import FCOS
-from utils.argutils import parse_3d_args, parse_training_args, parse_general_args, parse_a2j_args
+
+from tqdm import tqdm
+from utils.argutils import parse_training_args, parse_general_args, parse_a2j_args
 import torch, os, time, datetime
 from utils.utils import get_e2e_loaders, vis_minibatch
-from e2e_handnet.e2e_handnet import E2EHandNet
-from mano_train.evaluation.zimeval import EvalUtil
+from utils.evaluation.zimeval import EvalUtil
 from progress.bar import Bar as Bar
-from mano_train.exputils.monitoring import Monitor
-from mano_train.evaluation.evalutils import AverageMeters
-from datasets3d.queries import BaseQueries, TransQueries
-from mano_train.visualize import displaymano
+from utils.exputils.monitoring import Monitor
+from utils.evaluation.evalutils import AverageMeters
+from utils.visualize import displaymano
 import pickle, numpy as np
-import json
-from tqdm import tqdm, trange
-import matplotlib.pyplot as plt
 import matplotlib
-from torchvision import transforms
 from utils.hpe_eval import hpe_evaluate, hpe_plot
 import logging
 from utils.vistool import VisualUtil
@@ -61,9 +54,6 @@ def convert_joints(jt_uvd_pred, jt_uvd_gt, box, paras, cropWidth, cropHeight):
     jt_xyz_gt = uvd2xyz(jt_xyz_gt, paras) * 1000.
 
     return jt_xyz_pred, jt_xyz_gt
-
-
-
 
 def evaluate(
     model,

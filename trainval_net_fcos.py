@@ -4,23 +4,15 @@ import os
 import time
 from dex_ycb_toolkit.coco_eval import COCOEvaluator
 import numpy as np
-
 import torch
 import torch.utils.data
-import torchvision.models.detection
-
-
 import pickle
-
 from tqdm import tqdm, trange
-
 from fcos_utils.fcos import FCOS
-from mano_train.evaluation.evalutils import AverageMeters
-from mano_train.exputils.monitoring import Monitor
-
+from utils.evaluation.evalutils import AverageMeters
+from utils.exputils.monitoring import Monitor
 from utils.argutils import parse_training_args, parse_general_args
 from utils.utils import get_e2e_loaders
-
 from trainval_net_e2e import train_one_epoch_detect
 import torchvision.transforms as transforms
 import cv2

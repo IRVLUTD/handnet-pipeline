@@ -1,10 +1,6 @@
-#!/usr/bin/env python
 
-# Copyright (c) 2020 NVIDIA Corporation. All rights reserved.
-# This work is licensed under the NVIDIA Source Code License - Non-commercial. Full
-# text can be found in LICENSE.md
 
-"""Test UCN on ros images"""
+"""Test E2E-HN on ros images"""
 
 import torch
 import torch.nn.parallel
@@ -15,19 +11,13 @@ import torch.utils.data
 from e2e_handnet.e2e_handnet import E2EHandNet
 import message_filters
 import cv2
-import torch.nn as nn
 import threading
 import argparse
-import pprint
-import time, os, sys
-import os.path as osp
 import numpy as np
-import _init_paths
 import rospy
-import copy
 
 from sensor_msgs.msg import Image, CameraInfo
-from cv_bridge import CvBridge, CvBridgeError
+from cv_bridge import CvBridge
 from utils.vistool import VisualUtil
 lock = threading.Lock()
 

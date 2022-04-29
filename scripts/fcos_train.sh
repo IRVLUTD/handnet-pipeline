@@ -1,0 +1,2 @@
+CUDA_VISIBLE_DEVICES=1 nohup python3 trainval_net_fcos.py --model_name dexycb --net=fcos -bs=2 --lr=0.00125 --s=2 --amp --epoch=45 -j=8 > scripts/output/fcos_train.log 2>&1 &
+echo $! > scripts/output/fcos_train_pid.txt
