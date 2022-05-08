@@ -1,7 +1,12 @@
+import argparse
+from typing import Optional
 import torch
 import torch.nn as nn
 import a2j.resnet as resnet
 from a2j.anchor import A2J_loss, post_process
+import pytorch_lightning as pl
+
+from utils.utils import get_e2e_loaders
 
 class DepthRegressionModel(nn.Module):
     def __init__(self, num_features_in, num_anchors=16, num_classes=15, feature_size=256):
@@ -186,7 +191,7 @@ class A2JModel(nn.Module):
         pred_keypoints = self.post_process(heads, voting=False)
         output = torch.cat([output, pred_keypoints.data.cpu()], 0)
 
-        if self.training:
+        if gt is not None:
             cls_loss, reg_loss =  self.criterion(heads, gt)
             reg_loss *= self.reg_loss_factor
             losses = {
@@ -205,4 +210,59 @@ class A2JModel(nn.Module):
         if self.is_3D:
             depth_regression  = self.DepthRegressionModel(x4)
             return self.eager_outputs((classification, regression, depth_regression), gt)
-        return self.eager_outputs((classification, regression))
+        return self.eager_outputs((classification, regression), gt)
+
+class A2JModelLightning(pl.LightningModule):
+    def __init__(self, num_classes: int=21, crop_height:int=176, crop_width:int=176, is_3D:bool=True, spatial_factor:float=0.5):
+
+        """A2J Model for joint estimation
+
+        Args:
+            num_classes (int): number of classes
+            crop_height (int): height of the input image
+            crop_width (int): width of the input image
+            is_3D (bool): if True, use depth regression branch model
+            spatial_factor (float): spatial factor for the loss
+        """
+        super().__init__()
+        self.save_hyperparameters()
+        self.a2j = A2JModel(num_classes, crop_height, crop_width, is_3D, spatial_factor)
+
+    def training_step(self, batch, batch_idx):
+        im, jt_uvd_gt, dexycb_id, color_im, _, _ = batch
+        losses, outputs = self.a2j(im, jt_uvd_gt)
+        self.log('train_loss', losses['total_loss'], prog_bar=True)
+        return losses['total_loss']
+
+    def validation_step(self, batch, batch_idx):
+        im, jt_uvd_gt, dexycb_id, color_im, _, _ = batch
+        losses, outputs = self.a2j(im, jt_uvd_gt)
+        self.log('val_loss', losses['total_loss'], prog_bar=True)
+        return losses['total_loss']
+
+class A2JDataModule(pl.LightningDataModule):
+    def __init__(self, batch_size:int=64, workers:int=8, aspect_ratio_group_factor:int=0,):
+        super().__init__()
+
+        parser = argparse.ArgumentParser()
+        parser.add_argument('--batch_size', type=int, default=batch_size)
+        parser.add_argument('--workers', type=int, default=workers)
+        parser.add_argument('--aspect_ratio_group_factor', type=int, default=aspect_ratio_group_factor)
+        args = parser.parse_args([])
+
+        self.args = args
+    
+    def setup(self, stage=None):
+        data_loader, data_loader_test, data_loader_val = get_e2e_loaders(self.args, a2j=True)
+        self.data_loader = data_loader
+        self.data_loader_val = data_loader_val
+        self.data_loader_test = data_loader_test
+    
+    def train_dataloader(self):
+        return self.data_loader
+    
+    def val_dataloader(self):
+        return self.data_loader_val
+
+    def test_dataloader(self):
+        return self.data_loader_test

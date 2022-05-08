@@ -276,7 +276,7 @@ def main(args):
     output_dir = args.output_dir
     os.makedirs(output_dir, exist_ok=True)
 
-    data_loader, data_loader_test = get_e2e_loaders(args, a2j=True)
+    data_loader, data_loader_test, _ = get_e2e_loaders(args, a2j=True)
     data_loader.batch_sampler.batch_size = args.batch_size
     data_loader.num_workers = args.workers
 

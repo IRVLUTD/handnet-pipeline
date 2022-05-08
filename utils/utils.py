@@ -1,4 +1,5 @@
 import matplotlib
+from sklearn.utils import shuffle
 from torchvision import transforms as T
 import torch
 import numpy as np
@@ -22,7 +23,6 @@ def get_transform():
     transforms = []
     transforms.append(T.ToTensor())
     return T.Compose(transforms)
-
 
 def get_e2e_loaders(args, detect=False, a2j=False):
     if detect:
@@ -48,17 +48,17 @@ def get_e2e_loaders(args, detect=False, a2j=False):
         else:
             dataset = E2EDataset(get_transform())
             collate = e2e_collate_fn
-        train_sampler = torch.utils.data.RandomSampler(dataset)
+        train_sampler = torch.utils.data.DistributedSampler(dataset)
         if args.aspect_ratio_group_factor > 0:
             group_ids = create_aspect_ratio_groups(dataset, k=args.aspect_ratio_group_factor)
             train_batch_sampler = GroupedBatchSampler(train_sampler, group_ids, args.batch_size)
+            data_loader = torch.utils.data.DataLoader(
+            dataset, batch_sampler=train_batch_sampler, num_workers=args.workers,
+            collate_fn=collate)
         else:
-            train_batch_sampler = torch.utils.data.BatchSampler(
-                train_sampler, args.batch_size, drop_last=True)
-
-        data_loader = torch.utils.data.DataLoader(
-        dataset, batch_sampler=train_batch_sampler, num_workers=args.workers,
-        collate_fn=collate)
+            data_loader = torch.utils.data.DataLoader(
+            dataset, batch_size=args.batch_size, sampler=train_sampler, num_workers=args.workers,
+            collate_fn=collate)
 
         with open(f'{cache_dir}train.pkl', 'wb+') as f:
             pickle.dump(data_loader, f)
@@ -77,7 +77,7 @@ def get_e2e_loaders(args, detect=False, a2j=False):
             dataset = E2EDataset(get_transform(), train=False)
             collate = e2e_collate_fn
 
-        test_sampler = torch.utils.data.SequentialSampler(dataset)
+        test_sampler = torch.utils.data.DistributedSampler(dataset, shuffle=False)
 
         data_loader_test = torch.utils.data.DataLoader(
             dataset, batch_size=1,
@@ -87,8 +87,32 @@ def get_e2e_loaders(args, detect=False, a2j=False):
         with open(f'{cache_dir}test.pkl', 'wb+') as f:
             pickle.dump(data_loader_test, f)
 
+    if os.path.exists(f'{cache_dir}val.pkl'):
+        with open(f'{cache_dir}val.pkl', 'rb') as f:
+            data_loader_val = pickle.load(f)
+    else:
+        if detect:
+            dataset = DetectDataset(get_transform(), train=False, val=True)
+            collate = collate_fn
+        elif a2j:
+            dataset = A2JDataset(train=False, val=True)
+            collate = torch.utils.data.dataloader.default_collate
+        else:
+            dataset = E2EDataset(get_transform(), train=False, val=True)
+            collate = e2e_collate_fn
+
+        val_sampler = torch.utils.data.DistributedSampler(dataset, shuffle=False)
+
+        data_loader_val = torch.utils.data.DataLoader(
+            dataset, batch_size=1,
+            sampler=val_sampler, num_workers=args.workers,
+            collate_fn=collate)
+
+        with open(f'{cache_dir}val.pkl', 'wb+') as f:
+            pickle.dump(data_loader_val, f)
+
     print("Created dataloaders")
-    return data_loader, data_loader_test
+    return data_loader, data_loader_test, data_loader_val
 
 def vis_minibatch(images, depths, jt_gt, vis_tool, dexycb_id, path='vis.jpg', jt_pred=None):
     #matplotlib.use("qt5agg")

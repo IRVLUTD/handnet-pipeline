@@ -45,11 +45,11 @@ class post_process(nn.Module):
     def __init__(self, P_h=[2,6], P_w=[2,6], shape=[48,26], stride=8,thres = 8,is_3D=True):
         super(post_process, self).__init__()
         anchors = generate_anchors(P_h=P_h,P_w=P_w)
-        self.all_anchors = torch.from_numpy(shift(shape,stride,anchors)).cuda().float()
-        self.thres = torch.from_numpy(np.array(thres)).cuda().float()
+        self.register_buffer('all_anchors', torch.from_numpy(shift(shape,stride,anchors)).float())
+        self.register_buffer('thres', torch.from_numpy(np.array(thres)).float())
         self.is_3D = is_3D
     def calc_distance(self, a, b):
-        dis = torch.zeros(a.shape[0],b.shape[0]).cuda()
+        dis = torch.zeros(a.shape[0],b.shape[0]).type_as(a)
         for i in range(a.shape[1]):
             dis += torch.pow(torch.unsqueeze(a[:, i], dim=1) - b[:,i],0.5)
         return dis
@@ -85,13 +85,13 @@ class A2J_loss(nn.Module):
     def __init__(self,P_h=[2,6], P_w=[2,6], shape=[8,4], stride=8,thres = [10.0,20.0],spatialFactor=0.1,img_shape=[0,0],is_3D=True):
         super(A2J_loss, self).__init__()
         anchors = generate_anchors(P_h=P_h, P_w=P_w)
-        self.all_anchors = torch.from_numpy(shift(shape,stride,anchors)).cuda().float()
-        self.thres = torch.from_numpy(np.array(thres)).cuda().float()
+        self.register_buffer('all_anchors', torch.from_numpy(shift(shape,stride,anchors)).float())
+        self.register_buffer('thres', torch.from_numpy(np.array(thres)).float())
         self.spatialFactor = spatialFactor
         self.img_shape = img_shape
         self.is_3D = is_3D
     def calc_distance(self, a, b):
-        dis = torch.zeros(a.shape[0],b.shape[0]).cuda()
+        dis = torch.zeros(a.shape[0],b.shape[0]).type_as(a)
         for i in range(a.shape[1]):
             dis += torch.abs(torch.unsqueeze(a[:, i], dim=1) - b[:,i])  
         return dis
@@ -121,7 +121,6 @@ class A2J_loss(nn.Module):
             reg_weight = F.softmax(classification,dim=0) #(w*h*A)*P
             reg_weight_xy = torch.unsqueeze(reg_weight,2).expand(reg_weight.shape[0],reg_weight.shape[1],2)#(w*h*A)*P*2         
             gt_xy = bbox_annotation[:,:2]#P*2 
-
             anchor_diff = torch.abs(gt_xy-(reg_weight_xy*torch.unsqueeze(anchor,1)).sum(0)) #P*2
             anchor_loss = torch.where(
                 torch.le(anchor_diff, 1),

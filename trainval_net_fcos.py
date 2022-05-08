@@ -100,7 +100,7 @@ def evaluate(
                         bbox[2:] -= bbox[:2]
                         pred_dict["bbox"] = list(np.float64(bbox))
                         pred_dict["score"] = np.float64(scores[j].item())
-                        pred_dict["category_id"] = labels[j].item()
+                        pred_dict["category_id"] =  22 if labels[j].item() == 1 else 0 # modified for hand-only detector
                         all_boxes.append(pred_dict)
         
         print(f"Average fps: {1./time_meters.average_meters['model_time'].avg}")
@@ -127,7 +127,7 @@ def main(args):
 
     output_dir = args.output_dir
 
-    detect_loader,  detect_test = get_e2e_loaders(args, detect=True)
+    detect_loader, detect_test, _ = get_e2e_loaders(args, detect=True)
 
     print("Creating model")
     #backbone = backbonefpn
@@ -160,7 +160,7 @@ def main(args):
             scaler.load_state_dict(checkpoint["scaler"])
 
     if args.test_only:
-        evaluate(model, detect_test, args, 1, args.start_epoch - 1, device=device)
+        evaluate(model, detect_test, args, 42, args.start_epoch - 1, device=device)
         return
 
     print("Start training")

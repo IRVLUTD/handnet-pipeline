@@ -18,7 +18,7 @@ import cv2
 from parso import parse
 from datasets3d.a2jdataset import uvd2xyz, xyz2uvd
 from fcos_utils.fcos import FCOS
-from utils.argutils import parse_3d_args, parse_e2e_args
+from utils.argutils import parse_e2e_args
 import torch, os, time, datetime
 from utils.hpe_eval import hpe_evaluate, hpe_plot
 from utils.utils import get_e2e_loaders, vis_minibatch
@@ -334,7 +334,7 @@ def e2e_eval_epoch(args):
     device = torch.device(args.device)
 
     args.batch_size = 1
-    _, data_loader_test = get_e2e_loaders(args)
+    _, data_loader_test, _ = get_e2e_loaders(args)
 
     print("Creating model")
     #backbone = backbonefpn
@@ -353,7 +353,6 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description='E2E HandNet Training')
     parse_e2e_args(parser)
-    parse_3d_args(parser)
 
     args = parser.parse_args()
 

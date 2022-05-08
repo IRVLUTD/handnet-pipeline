@@ -13,6 +13,8 @@ checkpoints2
 tmp/
 debug/
 
+wandb/
+
 __pycache__/
 .pytest_cache/
 

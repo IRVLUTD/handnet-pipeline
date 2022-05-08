@@ -3,6 +3,7 @@ conda env create
 eval "$(conda shell.bash hook)"
 conda activate e2e_handnet
 conda install pytorch=1.10.2 torchvision cudatoolkit=11.3 -c pytorch --yes
+conda install "pytorch-lightning[extra]" -c conda-forge --yes
 
 
 ln -s ../../../misc/mano dex-ycb-toolkit/manopth/mano/models

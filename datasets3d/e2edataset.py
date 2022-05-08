@@ -24,11 +24,14 @@ class E2EDataset(Dataset):
     def __init__(
         self,
         transform,
-        train=True
+        train=True,
+        val=False,
     ):
         # Dataset attributes
         if train:
             self.data = get_dataset('s0_train')
+        elif val:
+            self.data = get_dataset('s0_val')
         else:
             self.data = get_dataset('s0_test')
 

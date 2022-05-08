@@ -27,3 +27,5 @@ dependencies:
     - progress
     - plotly
     - PyQt5
+    - jsonargparse[signatures]
+    - wandb
