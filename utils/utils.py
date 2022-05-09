@@ -126,13 +126,6 @@ def vis_minibatch(images, depths, jt_gt, vis_tool, dexycb_id, path='vis.jpg', jt
     figs = [ plt.subplots(4 if len(images) > 4 else len(images), 3, figsize=(6,6)) for i in range(len(images)//4 if len(images) > 4 else 1) ]
     for i, im in enumerate(images):
 
-        # image
-        # im = images[i, :3, :, :].copy()
-        # im = im.transpose((1, 2, 0)) * 255.0
-        # im += cfg.PIXEL_MEANS
-        # im = im[:, :, (2, 1, 0)]
-        # im = np.clip(im, 0, 255)
-        # im = im.astype(np.uint8)
 
         '''
         if out_label_refined is not None:
@@ -182,7 +175,9 @@ def vis_minibatch(images, depths, jt_gt, vis_tool, dexycb_id, path='vis.jpg', jt
         image_plots.append(image_from_plot)
     
     img = cv2.hconcat(image_plots)
-    cv2.imwrite(path, img)
+    if path:
+        cv2.imwrite(path, img)
     plt.close('all')
+    return img
     #plt.savefig(path, dpi=300, bbox_inches='tight')
     #plt.show()

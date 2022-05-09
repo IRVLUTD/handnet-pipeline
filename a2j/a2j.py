@@ -6,7 +6,10 @@ import a2j.resnet as resnet
 from a2j.anchor import A2J_loss, post_process
 import pytorch_lightning as pl
 
-from utils.utils import get_e2e_loaders
+from utils.utils import get_e2e_loaders, vis_minibatch
+from utils.vistool import VisualUtil
+import torchvision.transforms as T
+import numpy as np
 
 class DepthRegressionModel(nn.Module):
     def __init__(self, num_features_in, num_anchors=16, num_classes=15, feature_size=256):
@@ -149,17 +152,21 @@ class ClassificationModel(nn.Module):
 
 
 class ResNetBackBone(nn.Module):
-    def __init__(self):
+    def __init__(self, channel_in):
         super(ResNetBackBone, self).__init__()
         
         modelPreTrain50 = resnet.resnet50(pretrained=True)
         self.model = modelPreTrain50
+        self.channel_in = channel_in
+        if channel_in == 4:
+            self.model.conv1 = nn.Conv2d(4, 64, kernel_size=7, stride=2, padding=3, bias=False)
         
     def forward(self, x): 
         n, c, h, w = x.size()  # x: [B, 1, H ,W]
         
-        x = x[:,0:1,:,:]  # depth
-        x = x.expand(n,3,h,w)
+        x = x[:,0:self.channel_in,:,:]  # depth
+        if self.channel_in == 1:
+            x = x.expand(n,3,h,w) # only for depth
               
         x = self.model.conv1(x)
         x = self.model.bn1(x)
@@ -173,10 +180,10 @@ class ResNetBackBone(nn.Module):
         return x3,x4  
 
 class A2JModel(nn.Module):
-    def __init__(self, num_classes, crop_height, crop_width, is_3D=True, spatial_factor=0.5,):
+    def __init__(self, num_classes, crop_height, crop_width, is_3D=True, is_RGBD=True, spatial_factor=0.5,):
         super(A2JModel, self).__init__()
         self.is_3D = is_3D 
-        self.Backbone = ResNetBackBone() # 1 channel depth only, resnet50 
+        self.Backbone = ResNetBackBone(channel_in=4 if is_RGBD else 1) # 1 channel depth only, resnet50 
         self.regressionModel = RegressionModel(2048, num_classes=num_classes)
         self.classificationModel = ClassificationModel(1024, num_classes=num_classes)
         if is_3D:
@@ -213,7 +220,16 @@ class A2JModel(nn.Module):
         return self.eager_outputs((classification, regression), gt)
 
 class A2JModelLightning(pl.LightningModule):
-    def __init__(self, num_classes: int=21, crop_height:int=176, crop_width:int=176, is_3D:bool=True, spatial_factor:float=0.5):
+    def __init__(
+        self, 
+        num_classes: int=21, 
+        crop_height:int=176, 
+        crop_width:int=176, 
+        is_3D:bool=True, 
+        is_RGBD:bool=True, 
+        spatial_factor:float=0.5,
+        display_freq:int=5000,
+    ):
 
         """A2J Model for joint estimation
 
@@ -223,21 +239,53 @@ class A2JModelLightning(pl.LightningModule):
             crop_width (int): width of the input image
             is_3D (bool): if True, use depth regression branch model
             spatial_factor (float): spatial factor for the loss
+            is_RGBD (bool): if True, use RGBD model
         """
         super().__init__()
         self.save_hyperparameters()
-        self.a2j = A2JModel(num_classes, crop_height, crop_width, is_3D, spatial_factor)
+        self.a2j = A2JModel(num_classes, crop_height, crop_width, is_3D, is_RGBD, spatial_factor)
+        self.rgbd = is_RGBD
+        self.display_freq = display_freq
+        self.vistool = VisualUtil('dexycb')
 
     def training_step(self, batch, batch_idx):
-        im, jt_uvd_gt, dexycb_id, color_im, _, _ = batch
-        losses, outputs = self.a2j(im, jt_uvd_gt)
-        self.log('train_loss', losses['total_loss'], prog_bar=True)
+        im, jt_uvd_gt, dexycb_id, color_im, _, _, combined_im = batch
+        if self.rgbd:
+            losses, outputs = self.a2j(combined_im, jt_uvd_gt)
+        else:
+            losses, outputs = self.a2j(im, jt_uvd_gt)
+        self.log('train_loss', losses['total_loss'])
+        if (batch_idx % self.display_freq == 0):
+            img = vis_minibatch(
+                np.array([ np.array(T.ToPILImage()(i)) for i in color_im ])[:, :, :, ::-1],
+                im.detach().cpu().numpy(),
+                jt_uvd_gt.detach().cpu().numpy(),
+                self.vistool,
+                dexycb_id.detach().cpu().numpy(),
+                path=None,
+                jt_pred=outputs.detach().cpu().numpy()
+            )
+            self.logger.log_image(key="samples", images=[img])
         return losses['total_loss']
 
     def validation_step(self, batch, batch_idx):
-        im, jt_uvd_gt, dexycb_id, color_im, _, _ = batch
-        losses, outputs = self.a2j(im, jt_uvd_gt)
-        self.log('val_loss', losses['total_loss'], prog_bar=True)
+        im, jt_uvd_gt, dexycb_id, color_im, _, _, combined_im = batch
+        if self.rgbd:
+            losses, outputs = self.a2j(combined_im, jt_uvd_gt)
+        else:
+            losses, outputs = self.a2j(im, jt_uvd_gt)
+        self.log('val_loss', losses['total_loss'])
+        if (batch_idx % self.display_freq == 0):
+            img = vis_minibatch(
+                np.array([ np.array(T.ToPILImage()(i)) for i in color_im ])[:, :, :, ::-1],
+                im.detach().cpu().numpy(),
+                jt_uvd_gt.detach().cpu().numpy(),
+                self.vistool,
+                dexycb_id.detach().cpu().numpy(),
+                path=None,
+                jt_pred=outputs.detach().cpu().numpy()
+            )
+            self.logger.log_image(key="samples", images=[img])
         return losses['total_loss']
 
 class A2JDataModule(pl.LightningDataModule):

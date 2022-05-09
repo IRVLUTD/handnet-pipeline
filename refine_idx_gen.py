@@ -4,7 +4,7 @@ import pickle
 import numpy as np
 from tqdm import tqdm
 
-data = get_dataset('s0_test')
+data = get_dataset('s0_val')
 
 refine_idx = []
 
@@ -23,4 +23,4 @@ for idx, sample in enumerate(tqdm(data)):
     else:
         refine_idx.append(idx)
 
-pickle.dump(refine_idx, open('data/e2e/cache/refined_test_idx.pkl', 'wb+'))  
+pickle.dump(refine_idx, open('data/e2e/cache/refined_val_idx.pkl', 'wb+'))  

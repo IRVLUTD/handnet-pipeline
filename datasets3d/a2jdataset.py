@@ -15,6 +15,7 @@ import cv2
 import os
 from tqdm import tqdm
 from utils.vistool import VisualUtil
+import torchvision.transforms as transforms
 
 
 def xyz2uvd(pts, paras, flipy=1):
@@ -57,6 +58,8 @@ class A2JDataset(Dataset):
             self.data = get_dataset('s0_test')
         if train:
             self.refined_idx = pickle.load(open('data/e2e/cache/refined_train_idx.pkl', 'rb'))
+        elif val:
+            self.refined_idx = pickle.load(open('data/e2e/cache/refined_val_idx.pkl', 'rb'))
         else:
             self.refined_idx = pickle.load(open('data/e2e/cache/refined_test_idx.pkl', 'rb'))
 
@@ -70,7 +73,7 @@ class A2JDataset(Dataset):
         self.augment = train
 
         print("Loading 3D annotations")
-        self.load_3d(train)
+        self.load_3d(train, val=val)
 
     def __len__(self):
         return len(self.refined_idx)
@@ -87,8 +90,13 @@ class A2JDataset(Dataset):
 
         return img_out, label_out
 
-    def load_3d(self, train):
-        split = 'train' if train else 'test'
+    def load_3d(self, train, val=False):
+        if train:
+            split = 'train'
+        elif val:
+            split = 'val'
+        else:
+            split = 'test'
 
         if os.path.exists(f'data/e2e/cache/{split}_3d_a2j.pt'):
             dict_3d = torch.load(f'data/e2e/cache/{split}_3d_a2j.pt')
@@ -277,8 +285,12 @@ class A2JDataset(Dataset):
             imgResize, joints_uvd[:, :2] = self.transform(imgResize, joints_uvd, matrix)
             color_imgResize = cv2.warpAffine(color_imgResize,matrix,(self.cropWidth,self.cropHeight))
         joints_uvd[:, 2] = xyz2uvd(joints_xyz, paras)[:, 2]
+        
+        tensor_color_im = transforms.ToTensor()(color_imgResize.astype(np.uint8))
+        tensor_depth_im = torch.from_numpy(imgResize[np.newaxis, :, : ])
+        combine_im = torch.concat([tensor_color_im, tensor_depth_im]).float()
 
-        return imgResize[np.newaxis, :].astype(np.float32), joints_uvd, dexycb_id, color_imgResize.astype(np.float32), np.array([new_Xmin, new_Ymin, new_Xmax, new_Ymax]).astype(np.float32), paras.astype(np.float32)
+        return tensor_depth_im, joints_uvd, dexycb_id, tensor_color_im, np.array([new_Xmin, new_Ymin, new_Xmax, new_Ymax]).astype(np.float32), paras.astype(np.float32), combine_im
 
     def __getitem__(self, idx):
         try:

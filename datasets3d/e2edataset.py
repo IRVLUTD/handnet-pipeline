@@ -38,6 +38,8 @@ class E2EDataset(Dataset):
         self.transform = transform
         if train:
             self.refined_idx = pickle.load(open('data/e2e/cache/refined_train_idx.pkl', 'rb'))
+        elif val:
+            self.refined_idx = pickle.load(open('data/e2e/cache/refined_val_idx.pkl', 'rb'))
         else:
             self.refined_idx = pickle.load(open('data/e2e/cache/refined_test_idx.pkl', 'rb'))
 
