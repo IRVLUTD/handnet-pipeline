@@ -5,11 +5,35 @@ import torch.nn as nn
 import a2j.resnet as resnet
 from a2j.anchor import A2J_loss, post_process
 import pytorch_lightning as pl
+from datasets3d.a2jdataset import uvd2xyz
 
 from utils.utils import get_e2e_loaders, vis_minibatch
 from utils.vistool import VisualUtil
 import torchvision.transforms as T
 import numpy as np
+
+
+def convert_joints(jt_uvd_pred, jt_uvd_gt, box, paras, cropWidth, cropHeight):
+    jt_uvd_pred = jt_uvd_pred.reshape(-1, 3)
+    jt_uvd_gt = jt_uvd_gt.reshape(-1, 3)
+    box = box.reshape(4)
+    paras = paras.reshape(4)
+
+    X_min, Y_min, X_max, Y_max = box[0], box[1], box[2], box[3]
+
+    jt_xyz_pred = np.ones_like(jt_uvd_pred)
+    jt_xyz_pred[:, 0] = jt_uvd_pred[:, 0] * (X_max - X_min) / cropWidth + X_min
+    jt_xyz_pred[:, 1] = jt_uvd_pred[:, 1] * (Y_max - Y_min) / cropHeight + Y_min
+    jt_xyz_pred[:, 2] = jt_uvd_pred[:, 2]
+    jt_xyz_pred = uvd2xyz(jt_xyz_pred, paras) * 1000.
+
+    jt_xyz_gt = np.ones_like(jt_uvd_gt)
+    jt_xyz_gt[:, 0] = jt_uvd_gt[:, 0] * (X_max - X_min) / cropWidth + X_min
+    jt_xyz_gt[:, 1] = jt_uvd_gt[:, 1] * (Y_max - Y_min) / cropHeight + Y_min
+    jt_xyz_gt[:, 2] = jt_uvd_gt[:, 2]
+    jt_xyz_gt = uvd2xyz(jt_xyz_gt, paras) * 1000.
+
+    return jt_xyz_pred, jt_xyz_gt
 
 class DepthRegressionModel(nn.Module):
     def __init__(self, num_features_in, num_anchors=16, num_classes=15, feature_size=256):
@@ -248,6 +272,9 @@ class A2JModelLightning(pl.LightningModule):
         self.display_freq = display_freq
         self.vistool = VisualUtil('dexycb')
 
+    def forward(self, x, gt=None):
+        return self.a2j(x, gt)
+
     def training_step(self, batch, batch_idx):
         im, jt_uvd_gt, dexycb_id, color_im, _, _, combined_im = batch
         if self.rgbd:
@@ -287,6 +314,30 @@ class A2JModelLightning(pl.LightningModule):
             )
             self.logger.log_image(key="samples", images=[img])
         return losses['total_loss']
+
+    def test_step(self, batch, batch_idx):
+        im, jt_uvd_gt, dexycb_id, color_im, box, paras, combined_im = batch
+        if self.rgbd:
+            outputs = self.a2j(combined_im)
+        else:
+            outputs = self.a2j(im)
+
+        jt_xyz_pred, jt_xyz_gt = convert_joints(
+            outputs.detach().cpu().numpy(), 
+            jt_uvd_gt.cpu().numpy(), 
+            box.cpu().numpy(), 
+            paras.cpu().numpy(), 
+            176,
+            176
+        )
+
+        j_text = ''
+        for j in jt_xyz_pred:
+            j_text += str(list(j)).strip()[1:-1] + ','
+        j_text = j_text.replace(" ", "")[:-1]
+        
+        with open('models/a2j_lightning/' + f's0_test.txt', 'a') as output:
+            print(str(dexycb_id[0].cpu().numpy())[1:-1] + ',' + j_text, file=output)
 
 class A2JDataModule(pl.LightningDataModule):
     def __init__(self, batch_size:int=64, workers:int=8, aspect_ratio_group_factor:int=0,):

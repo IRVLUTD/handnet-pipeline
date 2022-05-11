@@ -121,7 +121,7 @@ def vis_minibatch(images, depths, jt_gt, vis_tool, dexycb_id, path='vis.jpg', jt
     n = 4
 
     jt_gt = jt_gt.reshape(-1, 21, 3)
-    jt_pred = jt_pred.reshape(-1, 21, 3)
+    jt_pred = jt_pred.reshape(-1, 21, 3) if jt_pred is not None else None
     
     figs = [ plt.subplots(4 if len(images) > 4 else len(images), 3, figsize=(6,6)) for i in range(len(images)//4 if len(images) > 4 else 1) ]
     for i, im in enumerate(images):

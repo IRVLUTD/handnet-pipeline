@@ -62,7 +62,7 @@ def evaluate(
     device,
     vistool,
     args,
-    start,
+    start,metric_path
     end,
     display_freq=5000
 ):
@@ -115,7 +115,7 @@ def evaluate(
                         image_path_epoch, "img_{:06d}.png".format(idx)
                     )
                     vis_minibatch(
-                        color_im.numpy(),
+                        color_im.numpy(),  hpe_eval = HPEEvaluator('s0_test')
                         im.detach().cpu().numpy(),
                         jt_uvd_gt.numpy(),
                         vistool,
