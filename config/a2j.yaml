@@ -20,7 +20,7 @@ model:
   crop_height: 176
   crop_width: 176
   is_3D: true
-  is_RGBD: true
+  is_RGBD: false
   spatial_factor: 0.5
   display_freq: 5000
 data:

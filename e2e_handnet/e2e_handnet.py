@@ -11,9 +11,9 @@ from a2j.a2j import A2JModelLightning
 
 #from .bridge import E2EBridge
 
-def load_pretrained_fcos(args, reload_detector=False):
+def load_pretrained_fcos(args, reload_detector=False, num_classes=2):
     print("Loading pretrained detector")
-    detector = FCOS(num_classes=3, ext=False, nms_thresh=0.5) # num_class dependent on detector
+    detector = FCOS(num_classes=num_classes, ext=False, nms_thresh=0.5) # num_class dependent on detector
     
     if reload_detector:
         checkpoint = torch.load(args.pretrained_fcos, map_location="cpu")
@@ -44,13 +44,16 @@ class E2EHandNet(nn.Module):
         self,
         args,
         reload_detector: bool = False,
+        num_classes: int = 2,
         reload_a2j: bool = False,
         RGBD: bool = False,
     ):
         super().__init__()
-        self.detector = load_pretrained_fcos(args, reload_detector)
+        self.detector = load_pretrained_fcos(args, reload_detector, num_classes)
         self.detector.eval()
         self.a2j = load_pretrained_a2j(args, reload_a2j, RGBD)
+        self.RGBD = RGBD
+        self.num_classes = num_classes
     
     def forward(
         self, 
@@ -85,7 +88,7 @@ class E2EHandNet(nn.Module):
             detections = self.detector(images, None)
             images = torch.stack(images)
 
-            hand_mask = [(res_per_image['labels'] == 2) for res_per_image in detections ] # hand class dependent on detector
+            hand_mask = [(res_per_image['labels'] == self.num_classes - 1) for res_per_image in detections ] # hand class dependent on detector
 
             depth_batch = []
             crops = []
@@ -104,7 +107,7 @@ class E2EHandNet(nn.Module):
                 # pad box
                 w = box[2] - box[0]
                 h = box[3] - box[1]
-                percent = 0.3
+                percent = 0.4
                 box[0] = max(0, box[0] - percent * (w))
                 box[1] = max(0, box[1] - percent * (h))
                 box[2] = min(images[img_idx].shape[2], box[2] + percent * (w))
@@ -113,7 +116,7 @@ class E2EHandNet(nn.Module):
                 crops.append(box)
                 try:
                     depth_crop = F.interpolate(depth_images[img_idx, :, box[1]:box[3] + 1, box[0]:box[2] + 1].unsqueeze(0), size=(176, 176)).squeeze(0)
-                    depth_crop = depth_crop[ [2,1,0,3], :, :]
+                    depth_crop = depth_crop[ [2,1,0,3], :, :] if self.RGBD else depth_crop
                 except:
                     print("hi")
                 depth_batch.append(depth_crop)

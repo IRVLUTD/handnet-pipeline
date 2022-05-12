@@ -1,5 +1,6 @@
 import argparse
 from typing import Optional
+from dex_ycb_toolkit.hpe_eval import HPEEvaluator
 import torch
 import torch.nn as nn
 import a2j.resnet as resnet
@@ -11,6 +12,7 @@ from utils.utils import get_e2e_loaders, vis_minibatch
 from utils.vistool import VisualUtil
 import torchvision.transforms as T
 import numpy as np
+import os
 
 
 def convert_joints(jt_uvd_pred, jt_uvd_gt, box, paras, cropWidth, cropHeight):
@@ -204,7 +206,7 @@ class ResNetBackBone(nn.Module):
         return x3,x4  
 
 class A2JModel(nn.Module):
-    def __init__(self, num_classes, crop_height, crop_width, is_3D=True, is_RGBD=True, spatial_factor=0.5,):
+    def __init__(self, num_classes, crop_height, crop_width, is_3D=True, is_RGBD=False, spatial_factor=0.5,):
         super(A2JModel, self).__init__()
         self.is_3D = is_3D 
         self.Backbone = ResNetBackBone(channel_in=4 if is_RGBD else 1) # 1 channel depth only, resnet50 
@@ -250,9 +252,10 @@ class A2JModelLightning(pl.LightningModule):
         crop_height:int=176, 
         crop_width:int=176, 
         is_3D:bool=True, 
-        is_RGBD:bool=True, 
+        is_RGBD:bool=False, 
         spatial_factor:float=0.5,
         display_freq:int=5000,
+        output_dir:str='models/a2j',
     ):
 
         """A2J Model for joint estimation
@@ -271,6 +274,8 @@ class A2JModelLightning(pl.LightningModule):
         self.rgbd = is_RGBD
         self.display_freq = display_freq
         self.vistool = VisualUtil('dexycb')
+        os.makedirs(os.path.join(output_dir,'a2j_test_metrics/'), exist_ok=True)
+        os.makedirs(os.path.join(output_dir,'dexycb_metrics'), exist_ok=True)
 
     def forward(self, x, gt=None):
         return self.a2j(x, gt)
@@ -302,6 +307,11 @@ class A2JModelLightning(pl.LightningModule):
         else:
             losses, outputs = self.a2j(im, jt_uvd_gt)
         self.log('val_loss', losses['total_loss'])
+
+        # calculate rmse per batch
+        rmse = torch.sqrt(torch.mean(torch.square(jt_uvd_gt - outputs)))
+        self.log('test_rmse', rmse.item())
+
         if (batch_idx % self.display_freq == 0):
             img = vis_minibatch(
                 np.array([ np.array(T.ToPILImage()(i)) for i in color_im ])[:, :, :, ::-1],
@@ -331,13 +341,23 @@ class A2JModelLightning(pl.LightningModule):
             176
         )
 
+        # calculate rmse per batch
+        rmse = torch.sqrt(torch.mean(torch.square(jt_xyz_gt - jt_xyz_pred)))
+        self.log('test_rmse', rmse.item())
+
         j_text = ''
         for j in jt_xyz_pred:
             j_text += str(list(j)).strip()[1:-1] + ','
         j_text = j_text.replace(" ", "")[:-1]
+
+        epoch_output = os.path.join(self.output_dir, f'a2j_test_metrics/s0_test_{self.current_epoch}.txt')
         
-        with open('models/a2j_lightning/' + f's0_test.txt', 'a') as output:
+        with open(epoch_output, 'a') as output:
             print(str(dexycb_id[0].cpu().numpy())[1:-1] + ',' + j_text, file=output)
+
+    def test_epoch_end(self, outputs):
+        hpe_eval = HPEEvaluator('s0_test')
+        hpe_eval.evaluate(self.current_epoch, os.path.join(self.output_dir, f'a2j_test_metrics/s0_test_{self.current_epoch}.txt', os.path.join(self.output_dir, 'dexycb_metrics/')))
 
 class A2JDataModule(pl.LightningDataModule):
     def __init__(self, batch_size:int=64, workers:int=8, aspect_ratio_group_factor:int=0,):

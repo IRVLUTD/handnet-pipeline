@@ -2,6 +2,7 @@
 
 """Test E2E-HN on ros images"""
 
+from tomlkit import key
 import torch
 import torch.nn.parallel
 import torch.nn.functional as F
@@ -65,26 +66,6 @@ class ImageListener:
         # ts = message_filters.ApproximateTimeSynchronizer([self.box_pub, self.label_pub], queue_size, slop_seconds)
         # ts.registerCallback(self.callback_video)
 
-    def callback_video(self, box_msg, label_msg):
-        box_frame = self.cv_bridge.imgmsg_to_cv2(box_msg, 'bgr8')
-        label_frame = self.cv_bridge.imgmsg_to_cv2(label_msg, 'bgr8')
-
-        with lock:
-            self.box_video.append(box_frame)
-            self.label_video.append(label_frame)
-
-    def write_video(self, path_box, path_label):
-        fourcc = cv2.VideoWriter_fourcc(*'XVID')
-        out = cv2.VideoWriter(path_box, fourcc, 30.0, (640, 480))
-        for i in range(len(self.box_video)):
-            out.write(self.box_video[i])
-        out.release()
-
-        out = cv2.VideoWriter(path_label, fourcc, 30.0, (176, 176))
-        for i in range(len(self.label_video)):
-            out.write(self.label_video[i])
-        out.release()
-
     def callback_rgbd(self, rgb, depth):
 
         if depth.encoding == '32FC1':
@@ -141,7 +122,10 @@ class ImageListener:
         # unbatch
         detection = detections[0]
         keypoint_pred = keypoint_pred[0]
+
+        # metrics
         depth_im = depth_im[0]
+        uv_depth = depth_im[:, keypoint_pred[:, 0].long(), keypoint_pred[:, 1].long()]
 
         image_to_draw = Transforms.ToPILImage()(im_color_forward[0]).convert('RGB')
         image_to_draw = np.array(image_to_draw)
@@ -172,8 +156,12 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Demo E2E-HandNet on ROS')
     parser.add_argument('--pretrained_fcos', dest='pretrained_fcos', help='Pretrained FCOS model',
                         default='models/fcos_handobj_100K_res34/detector_1_25.pth', type=str)
+    # parser.add_argument('--pretrained_a2j', dest='pretrained_a2j', help='Pretrained A2J model',
+    #                     default='wandb/a2j/E2E-HandNet/326lfxim/checkpoints/epoch=44-step=128879.ckpt', type=str)
+    parser.add_argument('--num_classes', dest='num_classes', help='Number of classes in FCOS model', default=3, type=int)
     parser.add_argument('--pretrained_a2j', dest='pretrained_a2j', help='Pretrained A2J model',
-                        default='wandb/a2j/E2E-HandNet/326lfxim/checkpoints/epoch=44-step=128879.ckpt', type=str)
+                    default='models/a2j_dexycb_1/a2j_35.pth', type=str)
+    parser.add_argument('--rgbd', dest='rgbd', help='Use RGBD', type=bool, default=False)
 
     args = parser.parse_args()
     return args
@@ -182,12 +170,12 @@ def parse_args():
 if __name__ == '__main__':
 
     args = parse_args()
-    network = E2EHandNet(args, reload_detector=True, reload_a2j=True, RGBD=True).cuda().eval()
+    network = E2EHandNet(args, reload_detector=True, num_classes=args.num_classes, reload_a2j=True, RGBD=args.rgbd).cuda().eval()
     cudnn.benchmark = True
     #network.eval()
 
     # image listener
-    listener = ImageListener(network, RGBD=True)
+    listener = ImageListener(network, RGBD=args.rgbd)
     while not rospy.is_shutdown():
        listener.run_network()
     #listener.write_video('test_box.mp4', 'test_label.mp4')

@@ -12,18 +12,25 @@
 # Use pytorch3d to render mesh and disable ray
 
 import sys
-
-from tqdm import tqdm
-from utils.argutils import parse_training_args, parse_general_args, parse_a2j_args
+from parso import parse
+from tomlkit import key
+from fcos_utils.fcos import FCOS
+from utils.argutils import parse_3d_args, parse_training_args, parse_general_args, parse_a2j_args
 import torch, os, time, datetime
 from utils.utils import get_e2e_loaders, vis_minibatch
+from e2e_handnet.e2e_handnet import E2EHandNet
 from utils.evaluation.zimeval import EvalUtil
 from progress.bar import Bar as Bar
 from utils.exputils.monitoring import Monitor
 from utils.evaluation.evalutils import AverageMeters
+from datasets3d.queries import BaseQueries, TransQueries
 from utils.visualize import displaymano
 import pickle, numpy as np
+import json
+from tqdm import tqdm, trange
+import matplotlib.pyplot as plt
 import matplotlib
+from torchvision import transforms
 from utils.hpe_eval import hpe_evaluate, hpe_plot
 import logging
 from utils.vistool import VisualUtil
@@ -55,6 +62,9 @@ def convert_joints(jt_uvd_pred, jt_uvd_gt, box, paras, cropWidth, cropHeight):
 
     return jt_xyz_pred, jt_xyz_gt
 
+
+
+
 def evaluate(
     model,
     data_loader,
@@ -62,7 +72,7 @@ def evaluate(
     device,
     vistool,
     args,
-    start,metric_path
+    start,
     end,
     display_freq=5000
 ):
@@ -115,7 +125,7 @@ def evaluate(
                         image_path_epoch, "img_{:06d}.png".format(idx)
                     )
                     vis_minibatch(
-                        color_im.numpy(),  hpe_eval = HPEEvaluator('s0_test')
+                        color_im.numpy(),
                         im.detach().cpu().numpy(),
                         jt_uvd_gt.numpy(),
                         vistool,
@@ -276,7 +286,7 @@ def main(args):
     output_dir = args.output_dir
     os.makedirs(output_dir, exist_ok=True)
 
-    data_loader, data_loader_test, _ = get_e2e_loaders(args, a2j=True)
+    data_loader, data_loader_test = get_e2e_loaders(args, a2j=True)
     data_loader.batch_sampler.batch_size = args.batch_size
     data_loader.num_workers = args.workers
 
