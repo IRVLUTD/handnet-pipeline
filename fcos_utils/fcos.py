@@ -16,6 +16,7 @@ from .anchor_utils import AnchorGenerator
 from torchvision.models.detection.transform import GeneralizedRCNNTransform
 from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
 from torchvision.ops.feature_pyramid_network import LastLevelP6P7
+import pytorch_lightning as pl
 
 
 class FCOSHead(nn.Module):
@@ -787,3 +788,35 @@ def psum(a):
 	for i in a:
 		psum.append(psum[-1]+i) # psum[-1] is the last element in the list
 	return psum
+
+
+class FCOSLightningModel(pl.LightningModule):
+    def __init__(
+        self,
+        num_classes: int = 3,
+        # transform parameters
+        ext: bool = True,
+        min_size: int = 800,
+        max_size: int = 1333,
+        image_mean: Optional[List[float]] = None,
+        image_std: Optional[List[float]] = None,
+        center_sampling_radius: float = 1.5,
+        score_thresh: float = 0.2,
+        nms_thresh: float = 0.6,
+        detections_per_img: int = 100,
+        topk_candidates: int = 1000,
+    ):
+        super().__init__()
+        self.fcos = FCOS(
+            num_classes=num_classes,
+            ext=ext,
+            min_size=min_size,
+            max_size=max_size,
+            image_mean=image_mean,
+            image_std=image_std,
+            center_sampling_radius=center_sampling_radius,
+            score_thresh=score_thresh,
+            nms_thresh=nms_thresh,
+            detections_per_img=detections_per_img,
+            topk_candidates=topk_candidates,
+        )

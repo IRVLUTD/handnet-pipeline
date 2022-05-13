@@ -1,4 +1,4 @@
-name: e2e_handnet
+name: handnet_pipeline
 channels:
   - defaults
   - conda-forge

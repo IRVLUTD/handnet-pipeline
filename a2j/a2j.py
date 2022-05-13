@@ -14,7 +14,6 @@ import torchvision.transforms as T
 import numpy as np
 import os
 
-
 def convert_joints(jt_uvd_pred, jt_uvd_gt, box, paras, cropWidth, cropHeight):
     jt_uvd_pred = jt_uvd_pred.reshape(-1, 3)
     jt_uvd_gt = jt_uvd_gt.reshape(-1, 3)

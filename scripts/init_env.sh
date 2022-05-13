@@ -1,7 +1,7 @@
 #!/bin/bash
 conda env create
 eval "$(conda shell.bash hook)"
-conda activate e2e_handnet
+conda activate handnet_pipeline
 conda install pytorch=1.10.2 torchvision cudatoolkit=11.3 -c pytorch --yes
 conda install "pytorch-lightning[extra]" -c conda-forge --yes
 
