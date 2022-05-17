@@ -2,8 +2,6 @@
 conda env create
 eval "$(conda shell.bash hook)"
 conda activate handnet_pipeline
-conda install pytorch=1.10.2 torchvision cudatoolkit=11.3 -c pytorch --yes
-conda install "pytorch-lightning[extra]" -c conda-forge --yes
 
 
 ln -s ../../../misc/mano dex-ycb-toolkit/manopth/mano/models
@@ -22,3 +20,5 @@ pip install -e .
 # rospy dependency with conda
 echo 'export PYTHONPATH=$PYTHONPATH:/opt/ros/noetic/lib/python3/dist-packages' >> ~/.bashrc
 echo 'export PYTHONPATH=$PYTHONPATH:/opt/ros/noetic/lib/python3/dist-packages' >> ~/.zshrc
+
+conda install pytorch=1.10.2 torchvision==0.11.3 torchtext cudatoolkit=11.3 pytorch-lightning=1.5.10 -c pytorch -c conda-forge --yes

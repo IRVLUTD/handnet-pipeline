@@ -18,8 +18,8 @@ from dex_ycb_toolkit.logging import get_logger
 freihand_root = os.path.join(os.path.dirname(__file__), "..", "freihand")
 sys.path.append(freihand_root)
 
-from utils.eval_util import EvalUtil
-from eval import align_w_scale, curve, createHTML
+from freihand.utils.eval_util import EvalUtil
+from freihand.eval import align_w_scale, curve, createHTML
 
 _AUC_VAL_MIN = 0.0
 _AUC_VAL_MAX = 50.0

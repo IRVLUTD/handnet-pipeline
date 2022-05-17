@@ -2,6 +2,7 @@
 
 """Test E2E-HN on ros images"""
 
+from cv2 import cvtColor
 from tomlkit import key
 import torch
 import torch.nn.parallel
@@ -93,6 +94,8 @@ class ImageListener:
         with lock:
             if listener.im is None:
               return
+            if self.im is None: 
+                return 
             im_color = self.im.copy()
             depth_img = self.depth.copy()
             rgb_frame_id = self.rgb_frame_id
@@ -105,6 +108,9 @@ class ImageListener:
             if self.rgbd:
                 im_rgbd = torch.cat([im_color_forward[0].unsqueeze(0), depth_img], dim=1)
             keypoint_pred, depth_im, detections = self.network(im_color_forward, depth_images=im_rgbd if self.rgbd else depth_img)
+            keypoint_pred = keypoint_pred.cpu()
+            depth_im = depth_im.cpu()
+            detections = detections.cpu()
 
         if detections.max() == 0:
             label_msg = self.cv_bridge.cv2_to_imgmsg(self.empty_label)
@@ -120,15 +126,16 @@ class ImageListener:
             return
 
         # unbatch
-        detection = detections[0]
-        keypoint_pred = keypoint_pred[0]
+        detection = detections[0].clone()
+        keypoint_pred = keypoint_pred[0].clone()
+        print(keypoint_pred)
 
         # metrics
         depth_im = depth_im[0]
-        uv_depth = depth_im[:, keypoint_pred[:, 0].long(), keypoint_pred[:, 1].long()]
 
-        image_to_draw = Transforms.ToPILImage()(im_color_forward[0]).convert('RGB')
-        image_to_draw = np.array(image_to_draw)
+        image_to_draw = cv2.cvtColor(im_color, cv2.COLOR_BGR2RGB).copy()
+        detection[:2] = torch.clamp(detection[:2], 0, image_to_draw.shape[0])
+        detection[2:] = torch.clamp(detection[2:], 0, image_to_draw.shape[1])
         cv2.rectangle(image_to_draw, (detection[0], detection[1]), (detection[2], detection[3]), (0, 255, 0), 1)
         bbox_msg = self.cv_bridge.cv2_to_imgmsg(image_to_draw.astype(np.uint8))
         bbox_msg.header.stamp = rgb_frame_stamp
@@ -136,11 +143,10 @@ class ImageListener:
         bbox_msg.encoding = 'rgb8'
         self.box_pub.publish(bbox_msg)
 
-        color_im_crop = F.interpolate(im_color_forward[0][:,  detection[1]:detection[3] + 1, detection[0]:detection[2] + 1].unsqueeze(0), size=(176, 176)).squeeze(0)
-        color_im_crop = Transforms.ToPILImage()(color_im_crop).convert('RGB')
-        color_im_crop = np.array(color_im_crop)
+        color_im_crop = cv2.cvtColor(cv2.resize(im_color[detection[1]:detection[3], detection[0]:detection[2], :], (176, 176)), cv2.COLOR_BGR2RGB).copy()
 
         # visualize and publish
+        keypoint_pred = torch.clamp(keypoint_pred, min=0.0, max=176.0)
         label = self.vistool.plot(color_im_crop, None, None, jt_uvd_pred=keypoint_pred.cpu().numpy(), return_image=True)
         label_msg = self.cv_bridge.cv2_to_imgmsg(label.astype(np.uint8))
         label_msg.header.stamp = rgb_frame_stamp
@@ -155,12 +161,12 @@ def parse_args():
     """
     parser = argparse.ArgumentParser(description='Demo E2E-HandNet on ROS')
     parser.add_argument('--pretrained_fcos', dest='pretrained_fcos', help='Pretrained FCOS model',
-                        default='models/fcos_handobj_100K_res34/detector_1_25.pth', type=str)
+                        default='models/fcos.pth', type=str)
     # parser.add_argument('--pretrained_a2j', dest='pretrained_a2j', help='Pretrained A2J model',
     #                     default='wandb/a2j/E2E-HandNet/326lfxim/checkpoints/epoch=44-step=128879.ckpt', type=str)
     parser.add_argument('--num_classes', dest='num_classes', help='Number of classes in FCOS model', default=3, type=int)
     parser.add_argument('--pretrained_a2j', dest='pretrained_a2j', help='Pretrained A2J model',
-                    default='models/a2j_dexycb_1/a2j_35.pth', type=str)
+                    default='models/a2j_25.pth', type=str)
     parser.add_argument('--rgbd', dest='rgbd', help='Use RGBD', type=bool, default=False)
 
     args = parser.parse_args()
