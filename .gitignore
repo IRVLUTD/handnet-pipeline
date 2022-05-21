@@ -30,6 +30,7 @@ release_models/
 *.mp4
 *.png
 !pose2mesh/asset/*.png
+!dex-ycb-toolkit/docs/*.png
 
 # READ THIS BEFORE YOU REFACTOR ME
 #
@@ -261,6 +262,7 @@ lib/model/utils/bbox.c
 lib/pycocotools/_mask.c
 
 *.jpg
+!dex-ycb-toolkit/docs/*.jpg
 *_pkl
 *.pkl
 *.html
