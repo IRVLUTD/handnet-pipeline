@@ -1,0 +1,2 @@
+CUDA_VISIBLE_DEVICES=0 nohup python3 trainval_net_fcos.py --model_name=dexycb --net=fcos -r=models/fcos_dexycb_2/detector_2_45.pth --test-only --s=2 > scripts/output/fcos_eval.log 2>&1 &
+echo $! > scripts/output/fcos_eval_pid.txt

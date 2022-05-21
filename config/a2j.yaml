@@ -1,0 +1,31 @@
+seed_everything: null
+trainer:
+  accelerator: gpu
+  devices: 1
+  #strategy: ddp
+  max_epochs: 45
+  default_root_dir: models/a2j
+optimizer:
+  class_path: torch.optim.AdamW
+  init_args:
+    lr: 0.00035
+    weight_decay: 0.0001
+lr_scheduler:
+  class_path: torch.optim.lr_scheduler.StepLR
+  init_args:
+    gamma: 0.2
+    step_size: 10
+model:
+  num_classes: 21
+  crop_height: 176
+  crop_width: 176
+  is_3D: true
+  is_RGBD: false
+  spatial_factor: 0.5
+  display_freq: 5000
+  output_dir: 'models/a2j'
+data:
+  batch_size: 64
+  workers: 8
+  aspect_ratio_group_factor: 0
+ckpt_path: null

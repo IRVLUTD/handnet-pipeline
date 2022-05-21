@@ -1,0 +1,13 @@
+{
+    "exclude": [
+        "**/__pycache__",
+        "data/",
+        "models/",
+        "misc/",
+        "output/"
+    ],
+
+    "pythonVersion": "3.7",
+
+    "pythonPlatform": "Linux",
+}

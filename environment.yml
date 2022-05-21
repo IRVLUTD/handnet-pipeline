@@ -1,0 +1,31 @@
+name: handnet_pipeline
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.7.11
+  - numpy=1.20.2
+  - trimesh=3.9.20
+  - easydict
+  - rospkg
+  - empy
+  - matplotlib
+  - opencv
+  - pip
+  - pip:
+    - git+https://github.com/hassony2/chumpy.git
+    - cython==0.29.10
+    - msgpack
+    - pyyaml
+    - jinja2
+    - opencv-python==4.3.0.36
+    - scipy==1.5.1
+    - pascal_voc_writer
+    - pyrender==0.1.45
+    - progress
+    - plotly
+    - PyQt5
+    - jsonargparse[signatures]
+    - wandb
+    - open3d
+    - transforms3d
