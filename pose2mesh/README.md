@@ -1,6 +1,6 @@
 # Pose2Mesh: Graph Convolutional Network for 3D Human Pose and Mesh Recovery from a 2D Human Pose
-![pose to mesh](pose2mesh/asset/pose_mesh.png)
-![quality results](pose2mesh/asset/quality_result.png)
+![pose to mesh](./asset/pose_mesh.png)
+![quality results](./asset/quality_result.png)
 
 ## News
 - Update 21.04.27: Update PoseFix code and AMASS dataloader. Lowered PA-MPJPE, MPVPE on 3DPW!
@@ -10,7 +10,7 @@
 
 ## Introduction
 This repository is the offical [Pytorch](https://pytorch.org/) implementation of [Pose2Mesh: Graph Convolutional Network for 3D Human Pose and Mesh Recovery from a 2D Human Pose (ECCV 2020)](https://arxiv.org/abs/2008.09047). Below is the overall pipeline of Pose2Mesh.
-![overall pipeline](pose2mesh/asset/pipeline.png)
+![overall pipeline](./asset/pipeline.png)
 
 
 ## Install guidelines
@@ -38,7 +38,7 @@ Here I report the performance of Pose2Mesh.
 :muscle: __Update:__ We increased the performance on 3DPW using GT meshes obtained from [NeuralAnnot](https://arxiv.org/abs/2011.11232) on COCO and AMASS. The annotations from NeuralAnnot are yet to be released.  
 :muscle: __Update:__ The performance on 3DPW has increased using [DarkPose](https://github.com/ilovepose/DarkPose) 2D detection, which improved [HRNet](https://github.com/leoxiaobin/deep-high-resolution-net.pytorch).
 
-![table](pose2mesh/asset/tab.png)
+![table](./asset/tab.png)
 
 Below shows the results when the input is **groundtruth** 2D human poses.
 For Human3.6M benchmark, Pose2Mesh is trained on Human3.6M.
@@ -52,7 +52,7 @@ For 3DPW benchmark, Pose2Mesh is trained on Human3.6M and COCO.
 We provide qualitative results on SURREAL to show that Pose2Mesh can recover 3D shape to some degree.
 Please refer to the [paper](https://arxiv.org/abs/2008.09047) for more discussion.
 
-![surreal quality results](pose2mesh/asset/surreal.png)
+![surreal quality results](./asset/surreal.png)
 ## Directory
 
 ### Root
@@ -201,7 +201,7 @@ ${ROOT}
 
 ## Running Pose2Mesh
 
-![joint set topology](pose2mesh/asset/joint_sets.png)
+![joint set topology](./asset/joint_sets.png)
 
 ### Start
 - Pose2Mesh uses different joint sets from Human3.6M, COCO, SMPL, and MANO for Human3.6M, 3DPW, SURREAL, and FreiHAND benchmarks respectively. For the COCO joint set, we manually add 'Pelvis' and 'Neck' joints by computing the middle point of 'L_Hip' and 'R_Hip', and 'L_Shoulder' and 'R_Shoulder' respectively.
@@ -219,7 +219,7 @@ To train from the scratch, you should pre-train PoseNet first.
 
 Run
 ```
-python main/train.py --gpu 0,1,2,3 --cfg pose2mesh/asset/yaml/posenet_{input joint set}_train_{dataset list}.yml
+python main/train.py --gpu 0,1,2,3 --cfg ./asset/yaml/posenet_{input joint set}_train_{dataset list}.yml
 ```
 
 **2. Train Pose2Mesh**
@@ -228,7 +228,7 @@ Copy `best.pth.tar` in `${ROOT}/experiment/exp_*/checkpoint/` to `${ROOT}/experi
 
 Run
 ```
-python main/train.py --gpu 0,1,2,3 --cfg pose2mesh/asset/yaml/pose2mesh_{input joint set}_train_{dataset list}.yml
+python main/train.py --gpu 0,1,2,3 --cfg ./asset/yaml/pose2mesh_{input joint set}_train_{dataset list}.yml
 ```
 
 
@@ -238,7 +238,7 @@ Select the config file in `${ROOT}/asset/yaml/` and test. You can change the pre
 
 Run
 ```
-python main/test.py --gpu 0,1,2,3 --cfg pose2mesh/asset/yaml/{model name}_{input joint set}_test_{dataset name}.yml
+python main/test.py --gpu 0,1,2,3 --cfg ./asset/yaml/{model name}_{input joint set}_test_{dataset name}.yml
 ```
 
 ### Reference

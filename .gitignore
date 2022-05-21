@@ -29,6 +29,7 @@ release_models/
 .vscode
 *.mp4
 *.png
+!pose2mesh/asset/*.png
 
 # READ THIS BEFORE YOU REFACTOR ME
 #
