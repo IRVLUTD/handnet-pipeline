@@ -23,7 +23,7 @@ A pipeline for hand detection and hand pose estimation using FCOS and A2J. Train
    ```
 
 ## ROS Demo
-1. Make sure ROS environment variables are exported before running the demo.
+1. Make sure ROS environment variables are exported before running the demo and your active shell environment is `bash`.
 2. Run the following command to start the demo (with pretrained models):
     ```
     python ros_demo.py

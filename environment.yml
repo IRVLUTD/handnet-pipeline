@@ -10,7 +10,6 @@ dependencies:
   - rospkg
   - empy
   - matplotlib
-  - opencv
   - pip
   - pip:
     - git+https://github.com/hassony2/chumpy.git

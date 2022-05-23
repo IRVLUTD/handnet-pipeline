@@ -20,6 +20,6 @@ pip install -e .
 
 # rospy dependency with conda
 echo 'export PYTHONPATH=$PYTHONPATH:/opt/ros/noetic/lib/python3/dist-packages' >> ~/.bashrc
-echo 'export PYTHONPATH=$PYTHONPATH:/opt/ros/noetic/lib/python3/dist-packages' >> ~/.zshrc
+echo 'source /opt/ros/noetic/setup.bash' >> ~/.bashrc
 
 mamba install pytorch=1.10.2 torchvision=0.11.3 cudatoolkit=11.3 pytorch-lightning=1.5.10 -c conda-forge -c pytorch --yes
