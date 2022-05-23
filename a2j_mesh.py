@@ -21,7 +21,7 @@ if __name__ == "__main__":
 
     vistool = VisualUtil('dexycb')
     import argparse
-    parser = argparse.ArgumentParser(description='A2J Inference on Depth Image Directory')
+    parser = argparse.ArgumentParser(description='Mesh Inference on Subset of DexYCB')
 
     parser.add_argument('--resume', type=str, default='models/a2j.pth',)
     args = parser.parse_args()
