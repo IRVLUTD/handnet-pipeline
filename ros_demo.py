@@ -169,7 +169,7 @@ def predict_mesh(model, joint_input, graph_perm_reverse, mesh_model):
 
 class ImageListener:
 
-    def __init__(self, network, RGBD=False):
+    def __init__(self, network, RGBD=False, left=False):
 
         self.network = network
         self.cv_bridge = CvBridge()
@@ -181,6 +181,7 @@ class ImageListener:
         self.rgb_frame_stamp = None
         self.empty_label = np.zeros((176, 176, 3), dtype=np.uint8)
         self.rgbd = RGBD
+        self.left = left
         
         # initialize a node
         rospy.init_node("pose_rgb")
@@ -256,8 +257,9 @@ class ImageListener:
             rgb_frame_stamp = self.rgb_frame_stamp
 
         # flip if using left hand
-        # im_color = cv2.flip(im_color, 1)
-        # depth_img = cv2.flip(depth_img, 1)
+        if self.left:
+            im_color = cv2.flip(im_color, 1)
+            depth_img = cv2.flip(depth_img, 1)
 
         # run network
         with torch.inference_mode():
@@ -366,6 +368,7 @@ def parse_args():
     parser.add_argument('--pretrained_a2j', dest='pretrained_a2j', help='Pretrained A2J model',
                     default='models/a2j.pth', type=str)
     parser.add_argument('--rgbd', dest='rgbd', help='Use RGBD', type=bool, default=False)
+    parser.add_argument('--left', dest='left', help='Use left hand', type=bool, default=False)
 
     args = parser.parse_args()
     return args
@@ -379,7 +382,7 @@ if __name__ == '__main__':
     #network.eval()
 
     # image listener
-    listener = ImageListener(network, RGBD=args.rgbd)
+    listener = ImageListener(network, RGBD=args.rgbd, left=args.left)
     while not rospy.is_shutdown():
        listener.run_network()
     #listener.write_video('test_box.mp4', 'test_label.mp4')

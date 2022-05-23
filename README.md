@@ -17,10 +17,6 @@ A pipeline for hand detection and hand pose estimation using FCOS and A2J. Train
     ```
     ./scripts/download_models.sh
     ```
-6. Run index preprocessing for DexYCB
-   ```
-   python3 refine_idx_gen.py
-   ```
 
 ## ROS Demo
 1. Make sure ROS environment variables are exported before running the demo and your active shell environment is `bash`.
@@ -56,6 +52,10 @@ A pipeline for hand detection and hand pose estimation using FCOS and A2J. Train
     ├── calibration/
     └── models/
     ```
+ - Run index preprocessing for DexYCB
+   ```
+   python3 refine_idx_gen.py
+   ```
  - Run the following command to train the A2J model:
     ```
     python trainval_net_a2j.py fit
