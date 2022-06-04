@@ -113,7 +113,7 @@ class Renderer:
 
         return image
 
-def render(result, params, orig_height, orig_width, orig_img, mesh_face):
+def render(result, params, orig_height, orig_width, orig_img, mesh_face, mesh_filename=None):
     pred_verts = result['mesh']
 
     # Setup renderer for visualization
@@ -122,7 +122,7 @@ def render(result, params, orig_height, orig_width, orig_img, mesh_face):
         orig_img,
         params,
         pred_verts,
-        mesh_filename=None,
+        mesh_filename=mesh_filename,
     )
 
     return rendered_img
@@ -336,8 +336,15 @@ class ImageListener:
         out['mesh'][:, 1] *= -1
         out['mesh'][:, 2] *= -1
 
-        # vis mesh
-        rendered_img = render(out, self.paras, orig_height, orig_width, full_image, self.mesh_model.face)
+        if args.save_path:
+            # find avail filename
+            filename = 0
+            while os.path.exists(os.path.join(self.save_path, f'{filename}.npy')):
+                filename += 1
+            np.save(os.path.join(self.save_path, f'{filename}.npy'), out['mesh'])
+
+        # vis mesh (and optionally save)
+        rendered_img = render(out, self.paras, orig_height, orig_width, full_image, self.mesh_model.face, mesh_filename=os.path.join(self.save_path, f'{filename}.obj' if args.save_path else None))
         rendered_img = self.cv_bridge.cv2_to_imgmsg(rendered_img.astype(np.uint8))
         rendered_img.header.stamp = rgb_frame_stamp
         rendered_img.header.frame_id = rgb_frame_id
@@ -369,6 +376,7 @@ def parse_args():
                     default='models/a2j.pth', type=str)
     parser.add_argument('--rgbd', dest='rgbd', help='Use RGBD', type=bool, default=False)
     parser.add_argument('--left', dest='left', help='Use left hand', type=bool, default=False)
+    parser.add_argument('--save_path', dest='save_path', help='Path to save results', default='output/', type=str)
 
     args = parser.parse_args()
     return args
@@ -380,6 +388,8 @@ if __name__ == '__main__':
     network = HandNet(args, reload_detector=True, num_classes=args.num_classes, reload_a2j=True, RGBD=args.rgbd).cuda().eval()
     cudnn.benchmark = True
     #network.eval()
+
+    os.makedirs(args.save_path, exist_ok=True)
 
     # image listener
     listener = ImageListener(network, RGBD=args.rgbd, left=args.left)
