@@ -1,6 +1,6 @@
 # HandNet-Pipeline
 
-A pipeline for hand detection and hand pose estimation using FCOS and A2J. Training and inference scripts are provided. Below is a demo of robot grasp transfer using HandNet-Pipeline.
+A pipeline for hand detection and hand pose estimation using FCOS and A2J. Training and inference scripts are provided. Below is a demo of HandNet-Pipeline on ROS.
 
 ![Demo](assets/demo.gif)
 
