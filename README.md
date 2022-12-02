@@ -1,8 +1,6 @@
 # HandNet-Pipeline
 
-A pipeline for hand detection and hand pose estimation using FCOS and A2J. Training and inference scripts are provided. Below is a demo of HandNet-Pipeline on ROS.
-
-![Demo](assets/demo.gif)
+A pipeline for hand detection and hand pose estimation using FCOS and A2J. Training and inference scripts are provided.
 
 ## Environment setup
 1. Make sure to have Anaconda installed before initializing the environment.
@@ -69,14 +67,3 @@ A pipeline for hand detection and hand pose estimation using FCOS and A2J. Train
     python trainval_net_a2j.py test
     ```
  - If using pretrained model, load pretrained weights in LightningModule `init` instead (line 273).
-
-# Acknowledgements
-Without these works, HandNet-Pipeline would not be possible. A huge thanks to the authors for their work and releasing their code.
-## FCOS
-Code related to [FCOS](https://arxiv.org/abs/2006.09214) is adapted from the [official Torchvision implementation](https://github.com/pytorch/vision/blob/main/torchvision/models/detection/fcos.py)
-## A2J
-Code related to [A2J](https://arxiv.org/abs/1908.09999) is adapted from the [official implementation](https://github.com/zhangboshen/A2J)
-## 100 Days of Hands
-Code related to [100 Days of Hands](https://fouheylab.eecs.umich.edu/~dandans/projects/100DOH/file/hands.pdf) is adapted from the [official implementation](https://github.com/ddshan/hand_object_detector)
-## DexYCB
-Code related to [DexYCB](https://dex-ycb.github.io/assets/chao_cvpr2021.pdf) is adapted from the [official implementation](https://github.com/NVlabs/dex-ycb-toolkit)
