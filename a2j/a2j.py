@@ -14,7 +14,7 @@ import torchvision.transforms as T
 import numpy as np
 import os
 
-def convert_joints(jt_uvd_pred, jt_uvd_gt, box, paras, cropWidth, cropHeight):
+def convert_joints(jt_uvd_pred, jt_uvd_gt, box, paras, cropWidth, cropHeight, is_left=False, image_width=0, image_height=0):
     jt_uvd_pred = jt_uvd_pred.reshape(-1, 3)
     if jt_uvd_gt is not None:
         jt_uvd_gt = jt_uvd_gt.reshape(-1, 3)
@@ -28,6 +28,11 @@ def convert_joints(jt_uvd_pred, jt_uvd_gt, box, paras, cropWidth, cropHeight):
     jt_xyz_pred[:, 0] = jt_uvd_pred[:, 0] * (X_max - X_min) / cropWidth + X_min
     jt_xyz_pred[:, 1] = jt_uvd_pred[:, 1] * (Y_max - Y_min) / cropHeight + Y_min
     jt_xyz_pred[:, 2] = jt_uvd_pred[:, 2]
+
+    if is_left:
+        jt_xyz_pred[0, 0] = abs(image_width - jt_xyz_pred[0, 0])
+        # jt_xyz_pred[0, 1] = abs(image_height - jt_xyz_pred[0, 1])
+
     if paras is not None:
         jt_xyz_pred = uvd2xyz(jt_xyz_pred, paras) * 1000.
 
