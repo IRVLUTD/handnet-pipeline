@@ -1,5 +1,3 @@
-
-
 """Test HN pipeline on ros images"""
 
 from tomlkit import key
@@ -15,11 +13,14 @@ import argparse
 import numpy as np
 import rospy
 
-from sensor_msgs.msg import Image, CameraInfo
+from sensor_msgs.msg import Image, CameraInfo 
+from std_msgs.msg import Float64MultiArray
+from rospy_tutorials.msg import Floats
+from rospy.numpy_msg import numpy_msg
 from cv_bridge import CvBridge
 from utils.vistool import VisualUtil
-lock = threading.Lock()
 
+lock = threading.Lock()
 
 import os
 import torch
@@ -38,7 +39,8 @@ from _mano import MANO
 from a2j.a2j import convert_joints
 
 import os
-os.environ['PYOPENGL_PLATFORM'] = 'egl'# 'osmesa'
+
+os.environ['PYOPENGL_PLATFORM'] = 'egl'  # 'osmesa'
 import torch
 from torchvision.utils import make_grid
 import numpy as np
@@ -47,9 +49,11 @@ import trimesh
 import math
 
 from pyrender.constants import RenderFlags
+import tf2_ros
+from tf.transformations import quaternion_matrix
 
 class Renderer:
-    def __init__(self, faces, resolution=(224,224), orig_img=False, wireframe=False):
+    def __init__(self, faces, resolution=(224, 224), orig_img=False, wireframe=False):
         self.resolution = resolution
 
         self.faces = faces
@@ -113,6 +117,7 @@ class Renderer:
 
         return image
 
+
 def render(result, params, orig_height, orig_width, orig_img, mesh_face, mesh_filename=None):
     pred_verts = result['mesh']
 
@@ -131,10 +136,12 @@ def render(result, params, orig_height, orig_width, orig_img, mesh_face, mesh_fi
 def get_joint_setting(mesh_model):
     joint_regressor = mesh_model.joint_regressor
     joint_num = 21
-    skeleton = ( (0,1), (0,5), (0,9), (0,13), (0,17), (1,2), (2,3), (3,4), (5,6), (6,7), (7,8), (9,10), (10,11), (11,12), (13,14), (14,15), (15,16), (17,18), (18,19), (19,20) )
+    skeleton = (
+    (0, 1), (0, 5), (0, 9), (0, 13), (0, 17), (1, 2), (2, 3), (3, 4), (5, 6), (6, 7), (7, 8), (9, 10), (10, 11),
+    (11, 12), (13, 14), (14, 15), (15, 16), (17, 18), (18, 19), (19, 20))
     hori_conn = (
-    (1, 5), (5, 9), (9, 13), (13, 17), (2, 6), (6, 10), (10, 14), (14, 18), (3, 7), (7, 11), (11, 15), (15, 19),
-    (4, 8), (8, 12), (12, 16), (16, 20))
+        (1, 5), (5, 9), (9, 13), (13, 17), (2, 6), (6, 10), (10, 14), (14, 18), (3, 7), (7, 11), (11, 15), (15, 19),
+        (4, 8), (8, 12), (12, 16), (16, 20))
     graph_Adj, graph_L, graph_perm, graph_perm_reverse = \
         build_coarse_graphs(mesh_model.face, joint_num, skeleton, hori_conn, levels=6)
     model_chk_path = './experiment/pose2mesh_manoJ_train_freihand/final.pth.tar'
@@ -145,10 +152,12 @@ def get_joint_setting(mesh_model):
 
     return model, joint_regressor, joint_num, skeleton, graph_L, graph_perm_reverse
 
+
 def predict_mesh(model, joint_input, graph_perm_reverse, mesh_model):
     bbox = get_bbox(joint_input)
     bbox2 = process_bbox(bbox.copy())
-    joint_img, _ = j2d_processing(joint_input.copy(), (cfg.MODEL.input_shape[1], cfg.MODEL.input_shape[0]), bbox2, 0, 0, None)
+    joint_img, _ = j2d_processing(joint_input.copy(), (cfg.MODEL.input_shape[1], cfg.MODEL.input_shape[0]), bbox2, 0, 0,
+                                  None)
 
     joint_img = joint_img[:, :2]
     joint_img /= np.array([[cfg.MODEL.input_shape[1], cfg.MODEL.input_shape[0]]])
@@ -167,9 +176,10 @@ def predict_mesh(model, joint_input, graph_perm_reverse, mesh_model):
 
     return out
 
+
 class ImageListener:
 
-    def __init__(self, network, RGBD=False, left=False):
+    def __init__(self, network, RGBD=False, left=False, save_path=None):
 
         self.network = network
         self.cv_bridge = CvBridge()
@@ -182,13 +192,14 @@ class ImageListener:
         self.empty_label = np.zeros((176, 176, 3), dtype=np.uint8)
         self.rgbd = RGBD
         self.left = left
-        
+        self.save_path = save_path
+
         # initialize a node
         rospy.init_node("pose_rgb")
         self.box_pub = rospy.Publisher('box_label', Image, queue_size=10)
         self.label_pub = rospy.Publisher('pose_label', Image, queue_size=10)
         self.mesh_pub = rospy.Publisher('mesh_label', Image, queue_size=10)
-
+        self.hand_pc_pub = rospy.Publisher('mesh_pc', numpy_msg(Floats), queue_size=10)
 
         self.base_frame = 'measured/base_link'
         rgb_sub = message_filters.Subscriber('/head_camera/rgb/image_raw', Image, queue_size=10)
@@ -199,7 +210,7 @@ class ImageListener:
 
         # update camera intrinsics
         intrinsics = np.array(msg.K).reshape(3, 3)
-        self.paras = np.array([intrinsics[0, 0], intrinsics[1, 1], intrinsics[0, 2] ,intrinsics[1, 2]])
+        self.paras = np.array([intrinsics[0, 0], intrinsics[1, 1], intrinsics[0, 2], intrinsics[1, 2]])
 
         queue_size = 1
         slop_seconds = 0.1
@@ -211,7 +222,8 @@ class ImageListener:
         cfg.MODEL.posenet_pretrained = False
 
         self.mesh_model = MANO()
-        self.model, self.joint_regressor, self.joint_num, self.skeleton, self.graph_L, self.graph_perm_reverse = get_joint_setting(self.mesh_model)
+        self.model, self.joint_regressor, self.joint_num, self.skeleton, self.graph_L, self.graph_perm_reverse = get_joint_setting(
+            self.mesh_model)
         self.model = self.model.cuda()
         self.joint_regressor = torch.Tensor(self.joint_regressor).cuda()
         self.virtual_crop_size = 500
@@ -243,14 +255,13 @@ class ImageListener:
             self.rgb_frame_id = rgb.header.frame_id
             self.rgb_frame_stamp = rgb.header.stamp
 
-
     def run_network(self):
 
         with lock:
             if listener.im is None:
-              return
-            if self.im is None: 
-                return 
+                return
+            if self.im is None:
+                return
             im_color = self.im.copy()
             depth_img = self.depth.copy()
             rgb_frame_id = self.rgb_frame_id
@@ -263,11 +274,13 @@ class ImageListener:
 
         # run network
         with torch.inference_mode():
-            im_color_forward = [torch.from_numpy(cv2.cvtColor(im_color, cv2.COLOR_BGR2RGB).transpose(2, 0, 1).astype(np.float32) / 255.0).cuda()]
+            im_color_forward = [torch.from_numpy(
+                cv2.cvtColor(im_color, cv2.COLOR_BGR2RGB).transpose(2, 0, 1).astype(np.float32) / 255.0).cuda()]
             depth_img = torch.from_numpy(depth_img).unsqueeze(0).unsqueeze(0).cuda()
             if self.rgbd:
                 im_rgbd = torch.cat([im_color_forward[0].unsqueeze(0), depth_img], dim=1)
-            keypoint_pred, depth_im, detections = self.network(im_color_forward, depth_images=im_rgbd if self.rgbd else depth_img)
+            keypoint_pred, depth_im, detections = self.network(im_color_forward,
+                                                               depth_images=im_rgbd if self.rgbd else depth_img)
             keypoint_pred = keypoint_pred.cpu()
             depth_im = depth_im.cpu()
             detections = detections.cpu()
@@ -315,7 +328,9 @@ class ImageListener:
         bbox_msg.encoding = 'rgb8'
         self.box_pub.publish(bbox_msg)
 
-        color_im_crop = cv2.cvtColor(cv2.resize(im_color[detection[1]:detection[3], detection[0]:detection[2], :], (176, 176)), cv2.COLOR_BGR2RGB).copy()
+        color_im_crop = cv2.cvtColor(
+            cv2.resize(im_color[detection[1]:detection[3], detection[0]:detection[2], :], (176, 176)),
+            cv2.COLOR_BGR2RGB).copy()
 
         # visualize and publish
         label = self.vistool.plot(color_im_crop, None, None, jt_uvd_pred=keypoint_pred, return_image=True)
@@ -344,13 +359,14 @@ class ImageListener:
             np.save(os.path.join(self.save_path, f'{filename}.npy'), out['mesh'])
 
         # vis mesh (and optionally save)
-        rendered_img = render(out, self.paras, orig_height, orig_width, full_image, self.mesh_model.face, mesh_filename=os.path.join(self.save_path, f'{filename}.obj' if args.save_path else None))
+        rendered_img = render(out, self.paras, orig_height, orig_width, full_image, self.mesh_model.face,
+                              mesh_filename=os.path.join(self.save_path, f'{filename}.obj' if args.save_path else None))
         rendered_img = self.cv_bridge.cv2_to_imgmsg(rendered_img.astype(np.uint8))
         rendered_img.header.stamp = rgb_frame_stamp
         rendered_img.header.frame_id = rgb_frame_id
         rendered_img.encoding = 'rgb8'
         self.mesh_pub.publish(rendered_img)
-
+        self.hand_pc_pub.publish(out['mesh'].flatten())
         # alternate vis 2d pose
         # tmpkps = np.zeros((3, len(joints2d)))
         # tmpkps[0, :], tmpkps[1, :], tmpkps[2, :] = joints2d[:, 0], joints2d[:, 1], 1
@@ -373,9 +389,9 @@ def parse_args():
     #                     default='wandb/a2j/E2E-HandNet/326lfxim/checkpoints/epoch=44-step=128879.ckpt', type=str)
     parser.add_argument('--num_classes', dest='num_classes', help='Number of classes in FCOS model', default=3, type=int)
     parser.add_argument('--pretrained_a2j', dest='pretrained_a2j', help='Pretrained A2J model',
-                    default='models/a2j.pth', type=str)
+                        default='models/a2j.pth', type=str)
     parser.add_argument('--rgbd', dest='rgbd', help='Use RGBD', type=bool, default=False)
-    parser.add_argument('--left', dest='left', help='Use left hand', type=bool, default=False)
+    parser.add_argument('--left', dest='left', help='Use left hand', type=bool, default=True)
     parser.add_argument('--save_path', dest='save_path', help='Path to save results', default='output/', type=str)
 
     args = parser.parse_args()
@@ -387,12 +403,12 @@ if __name__ == '__main__':
     args = parse_args()
     network = HandNet(args, reload_detector=True, num_classes=args.num_classes, reload_a2j=True, RGBD=args.rgbd).cuda().eval()
     cudnn.benchmark = True
-    #network.eval()
+    # network.eval()
 
     os.makedirs(args.save_path, exist_ok=True)
 
     # image listener
-    listener = ImageListener(network, RGBD=args.rgbd, left=args.left)
+    listener = ImageListener(network, RGBD=args.rgbd, left=args.left, save_path=args.save_path)
     while not rospy.is_shutdown():
-       listener.run_network()
-    #listener.write_video('test_box.mp4', 'test_label.mp4')
+        listener.run_network()
+    # listener.write_video('test_box.mp4', 'test_label.mp4')
