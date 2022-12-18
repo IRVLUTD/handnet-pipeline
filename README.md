@@ -4,6 +4,19 @@ A pipeline for hand detection and hand pose estimation using FCOS and A2J. Train
 
 ![Demo](assets/demo.gif)
 
+If you find this code useful for your research, consider citing the publication this pipeline was developed for:
+
+```
+@inproceedings{
+khargonkar2022neuralgrasps,
+title={NeuralGrasps: Learning Implicit Representations for Grasps of Multiple Robotic Hands},
+author={Ninad Khargonkar and Neil Song and Zesheng Xu and B Prabhakaran and Yu Xiang},
+booktitle={6th Annual Conference on Robot Learning},
+year={2022},
+url={https://openreview.net/forum?id=OzP68WT3UA}
+}
+```
+
 ## Environment setup
 1. Make sure to have Anaconda installed before initializing the environment.
 2. Download MANO models and code (`mano_v1_2.zip`) from the [MANO website](https://mano.is.tue.mpg.de), unzip, and place `models/MANO_*.pkl` files under `misc/mano`.
