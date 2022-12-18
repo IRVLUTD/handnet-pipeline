@@ -8,12 +8,12 @@ If you find this code useful for your research, consider citing the publication 
 
 ```
 @inproceedings{
-khargonkar2022neuralgrasps,
-title={NeuralGrasps: Learning Implicit Representations for Grasps of Multiple Robotic Hands},
-author={Ninad Khargonkar and Neil Song and Zesheng Xu and B Prabhakaran and Yu Xiang},
-booktitle={6th Annual Conference on Robot Learning},
-year={2022},
-url={https://openreview.net/forum?id=OzP68WT3UA}
+    khargonkar2022neuralgrasps,
+    title={NeuralGrasps: Learning Implicit Representations for Grasps of Multiple Robotic Hands},
+    author={Ninad Khargonkar and Neil Song and Zesheng Xu and B Prabhakaran and Yu Xiang},
+    booktitle={6th Annual Conference on Robot Learning},
+    year={2022},
+    url={https://openreview.net/forum?id=OzP68WT3UA}
 }
 ```
 
