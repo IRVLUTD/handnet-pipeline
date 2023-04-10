@@ -245,7 +245,13 @@ class ImageListener:
 
 
     def run_network(self):
+        # image path for dataset
+        image_path = '../Downloads/imageDataset/0104T143721/*.jpg'
+        image_files = glob.glob(image_path)
+        for image_file in image_files:
+            self.im = cv2.imread(image_file)
 
+        # original code
         with lock:
             if listener.im is None:
               return
