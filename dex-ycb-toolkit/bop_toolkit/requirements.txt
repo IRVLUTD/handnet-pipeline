@@ -1,4 +1,4 @@
-scipy==1.5.1
+scipy==1.10.0
 imageio==2.5.0
 pypng==0.0.19
 Cython==0.29.10
