@@ -1,5 +1,5 @@
 #!/bin/bash
-conda install mamba==0.24.0 -n base -c conda-forge --yes
+conda install mamba -n base -c conda-forge --yes
 mamba env create
 eval "$(conda shell.bash hook)"
 conda activate handnet_pipeline
