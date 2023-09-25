@@ -4,7 +4,6 @@ import torch.nn.parallel
 import torch.backends.cudnn as cudnn
 import torch.utils.data
 from handnet_pipeline.handnet_pipeline import HandNet
-import message_filters
 import cv2
 import threading
 import argparse
