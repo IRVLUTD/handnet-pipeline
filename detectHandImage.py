@@ -80,6 +80,7 @@ def run_network(self):
     keypoint_pred = keypoint_pred.cpu().numpy()
 
     # sanity checking
+    # do we need this?
     joint_input = convert_joints(keypoint_pred, None, detection, None, 176, 176)[:, :2]
     bbox = get_bbox(joint_input)
     bbox2 = process_bbox(bbox.copy())
