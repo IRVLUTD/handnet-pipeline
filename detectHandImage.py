@@ -40,6 +40,7 @@ from PIL import Image
 import glob
 
 def run_network(self):
+    # Change to use one image from the image dataset, not the live streaming data
     with lock:
         if listener.im is None:
           return
