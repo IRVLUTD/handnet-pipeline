@@ -6,8 +6,6 @@ import torch.utils.data
 from handnet_pipeline.handnet_pipeline import HandNet
 import cv2
 import threading
-import argparse
-import numpy as np
 import rospy
 
 from sensor_msgs.msg import Image, CameraInfo
