@@ -80,7 +80,6 @@ def run_network(self):
     keypoint_pred = keypoint_pred.cpu().numpy()
 
     # sanity checking
-
     joint_input = convert_joints(keypoint_pred, None, detection, None, 176, 176)[:, :2]
     bbox = get_bbox(joint_input)
     bbox2 = process_bbox(bbox.copy())
@@ -113,6 +112,7 @@ def run_network(self):
     color_im_crop = cv2.cvtColor(cv2.resize(im_color[detection[1]:detection[3], detection[0]:detection[2], :], (176, 176)), cv2.COLOR_BGR2RGB).copy()
 
     # visualize and publish
+    # remove publish, not needed for object detection on image testing
     label = self.vistool.plot(color_im_crop, None, None, jt_uvd_pred=keypoint_pred, return_image=True)
     label_msg = self.cv_bridge.cv2_to_imgmsg(label.astype(np.uint8))
     label_msg.header.stamp = rgb_frame_stamp
