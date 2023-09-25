@@ -6,9 +6,8 @@ import torch.utils.data
 from handnet_pipeline.handnet_pipeline import HandNet
 import cv2
 import threading
-import rospy
-
-from sensor_msgs.msg import Image, CameraInfo
+# import rospy
+# from sensor_msgs.msg import Image, CameraInfo
 from cv_bridge import CvBridge
 from utils.vistool import VisualUtil
 lock = threading.Lock()
