@@ -38,11 +38,6 @@ os.environ['PYOPENGL_PLATFORM'] = 'egl'# 'osmesa'
 import torch
 from torchvision.utils import make_grid
 import numpy as np
-import pyrender
-import trimesh
-import math
-
-from pyrender.constants import RenderFlags
 
 #Image detection model for hands
 import ros_demo
@@ -50,13 +45,6 @@ from PIL import Image
 import glob
 
 def run_network(self):
-    # image path for dataset
-    image_path = '../Downloads/imageDataset/0104T143721/*.jpg'
-    image_files = glob.glob(image_path)
-    for image_file in image_files:
-        self.im = cv2.imread(image_file)
-
-    # original code
     with lock:
         if listener.im is None:
           return
