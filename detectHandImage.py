@@ -115,32 +115,3 @@ def run_network(self):
     rendered_img.header.frame_id = rgb_frame_id
     rendered_img.encoding = 'rgb8'
     self.mesh_pub.publish(rendered_img)
-
-    # alternate vis 2d pose
-    # tmpkps = np.zeros((3, len(joints2d)))
-    # tmpkps[0, :], tmpkps[1, :], tmpkps[2, :] = joints2d[:, 0], joints2d[:, 1], 1
-    # tmpimg = full_image.copy().astype(np.uint8)
-    # pose_vis_img = vis_2d_keypoints(tmpimg, tmpkps, skeleton)
-    # pose_vis_img = self.cv_bridge.cv2_to_imgmsg(pose_vis_img.astype(np.uint8))
-    # pose_vis_img.header.stamp = rgb_frame_stamp
-    # pose_vis_img.header.frame_id = rgb_frame_id
-    # pose_vis_img.encoding = 'rgb8'
-    # self.pose_pub.publish(pose_vis_img)
-
-# import glob
-# import cv2
-
-## create a list of image paths
-# image_paths = glob.glob('../Downloads/imageDataset/0104T143721/*.jpg')
-
-## create an instance of the class containing the run_network function
-# network_runner = NetworkRunner()
-
-## loop through each image and pass it to the run_network function
-# for image_path in image_paths:
-#     # read the image
-#     im = cv2.imread(image_path)
-
-#    # pass the image to the run_network function
-#     network_runner.run_network(im)
-
