@@ -1,3 +1,10 @@
+# import rospy
+# from sensor_msgs.msg import Image, CameraInfo
+# from cv_bridge import CvBridge
+# from utils.vistool import VisualUtil
+# from core.config import cfg
+# from aug_utils import j2d_processing
+# import colorsys
 from tomlkit import key
 import torch
 import torch.nn.parallel
@@ -6,22 +13,14 @@ import torch.utils.data
 from handnet_pipeline.handnet_pipeline import HandNet
 import cv2
 import threading
-# import rospy
-# from sensor_msgs.msg import Image, CameraInfo
-# from cv_bridge import CvBridge
-# from utils.vistool import VisualUtil
 lock = threading.Lock()
-
 
 import os
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import colorsys
-
 import models
-# from core.config import cfg
-# from aug_utils import j2d_processing
+
 from coord_utils import get_bbox, process_bbox
 from funcs_utils import load_checkpoint, save_obj
 from graph_utils import build_coarse_graphs
