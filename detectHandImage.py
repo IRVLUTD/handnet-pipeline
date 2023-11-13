@@ -1,148 +1,117 @@
-# import rospy
-# from sensor_msgs.msg import Image, CameraInfo
-# from cv_bridge import CvBridge
-# from utils.vistool import VisualUtil
-# from core.config import cfg
-# from aug_utils import j2d_processing
-# import colorsys
-from tomlkit import key
-import torch
-import torch.nn.parallel
-import torch.backends.cudnn as cudnn
-import torch.utils.data
-from handnet_pipeline.handnet_pipeline import HandNet
-import cv2
-import threading
-lock = threading.Lock()
+"""Test HandNet pipeline on images"""
 
-import os
 import torch
-import torch.nn as nn
-import torch.optim as optim
+import argparse
+import cv2
+import numpy as np
+from handnet_pipeline.handnet_pipeline import HandNet
+from pose2mesh.lib.funcs_utils import load_checkpoint
+from pose2mesh.lib.graph_utils import build_coarse_graphs
+from pose2mesh.lib.coord_utils import get_bbox, process_bbox
+from pose2mesh.lib.vis import vis_2d_keypoints
+from pose2mesh.lib._mano import MANO
+from a2j.a2j import convert_joints
+from pose2mesh.lib.core.config import cfg
+from pose2mesh.lib.aug_utils import j2d_processing
+from pose2mesh.lib.models.pose2mesh_net import get_model
 import models
 
-from coord_utils import get_bbox, process_bbox
-from funcs_utils import load_checkpoint, save_obj
-from graph_utils import build_coarse_graphs
-from vis import vis_2d_keypoints
-from _mano import MANO
-from a2j.a2j import convert_joints
-
-import os
-os.environ['PYOPENGL_PLATFORM'] = 'egl'# 'osmesa'
-import torch
-from torchvision.utils import make_grid
-import numpy as np
-
-#Image detection model for hands
-import ros_demo
-from PIL import Image
-import glob
-
-def run_network(self):
-    # Change to use one image from the image dataset, not the live streaming data
-    with lock:
-        if listener.im is None:
-          return
-        if self.im is None: 
-            return 
-        im_color = self.im.copy()
-        depth_img = self.depth.copy()
-        rgb_frame_id = self.rgb_frame_id
-        rgb_frame_stamp = self.rgb_frame_stamp
-
-    # flip if using left hand
-    if self.left:
-        im_color = cv2.flip(im_color, 1)
-        depth_img = cv2.flip(depth_img, 1)
-
-    # run network
-    with torch.inference_mode():
-        im_color_forward = [torch.from_numpy(cv2.cvtColor(im_color, cv2.COLOR_BGR2RGB).transpose(2, 0, 1).astype(np.float32) / 255.0).cuda()]
-        depth_img = torch.from_numpy(depth_img).unsqueeze(0).unsqueeze(0).cuda()
-        if self.rgbd:
-            im_rgbd = torch.cat([im_color_forward[0].unsqueeze(0), depth_img], dim=1)
-        keypoint_pred, depth_im, detections = self.network(im_color_forward, depth_images=im_rgbd if self.rgbd else depth_img)
-        keypoint_pred = keypoint_pred.cpu()
-        depth_im = depth_im.cpu()
-        detections = detections.cpu()
-
-    # unbatch
-    detection = detections[0].clone()
-    keypoint_pred = keypoint_pred[0].clone()
-
-    # clamping
-    detection[:2] = torch.clamp(detection[:2], 0, im_color.shape[0])
-    detection[2:] = torch.clamp(detection[2:], 0, im_color.shape[1])
-    detection = detection.numpy()
-
-    keypoint_pred = torch.clamp(keypoint_pred, min=0.0, max=176.0)
-    keypoint_pred = keypoint_pred.cpu().numpy()
-
-    # sanity checking
-    # do we need this?
-    joint_input = convert_joints(keypoint_pred, None, detection, None, 176, 176)[:, :2]
+def predict_mesh(model, joint_input, graph_perm_reverse, mesh_model):
     bbox = get_bbox(joint_input)
     bbox2 = process_bbox(bbox.copy())
-    print(keypoint_pred)
+    joint_img, _ = j2d_processing(joint_input.copy(), (cfg.MODEL.input_shape[1], cfg.MODEL.input_shape[0]), bbox2, 0, 0,
+                                  None)
 
-    if detections.max() == 0 or detections is None or bbox2 is None:
-        label_msg = self.cv_bridge.cv2_to_imgmsg(self.empty_label)
-        label_msg.header.stamp = rgb_frame_stamp
-        label_msg.header.frame_id = rgb_frame_id
-        label_msg.encoding = 'rgb8'
-        self.label_pub.publish(label_msg)
-        box_msg = self.cv_bridge.cv2_to_imgmsg(im_color)
-        box_msg.header.stamp = rgb_frame_stamp
-        box_msg.header.frame_id = rgb_frame_id
-        box_msg.encoding = 'bgr8'
-        self.box_pub.publish(box_msg)
-        return
+    joint_img = joint_img[:, :2]
+    joint_img /= np.array([[cfg.MODEL.input_shape[1], cfg.MODEL.input_shape[0]]])
+    mean, std = np.mean(joint_img, axis=0), np.std(joint_img, axis=0)
+    joint_img = (joint_img.copy() - mean) / std
+    joint_img = torch.Tensor(joint_img[None, :, :]).cuda()
+    model.eval()
+    pred_mesh, _ = model(joint_img)
+    pred_mesh = pred_mesh[:, graph_perm_reverse[:mesh_model.face.max() + 1], :]
+    out = {}
+    out['mesh'] = pred_mesh[0].detach().cpu().numpy()
+    return out
 
-    # metrics
-    depth_im = depth_im[0]
+def get_joint_setting(mesh_model):
+    joint_regressor = mesh_model.joint_regressor
+    joint_num = 21
+    skeleton = (
+    (0, 1), (0, 5), (0, 9), (0, 13), (0, 17), (1, 2), (2, 3), (3, 4), (5, 6), (6, 7), (7, 8), (9, 10), (10, 11),
+    (11, 12), (13, 14), (14, 15), (15, 16), (17, 18), (18, 19), (19, 20))
+    hori_conn = (
+        (1, 5), (5, 9), (9, 13), (13, 17), (2, 6), (6, 10), (10, 14), (14, 18), (3, 7), (7, 11), (11, 15), (15, 19),
+        (4, 8), (8, 12), (12, 16), (16, 20))
+    graph_Adj, graph_L, graph_perm, graph_perm_reverse = \
+        build_coarse_graphs(mesh_model.face, joint_num, skeleton, hori_conn, levels=6)
+    model_chk_path = './experiment/pose2mesh_manoJ_train_freihand/final.pth.tar'
 
-    image_to_draw = cv2.cvtColor(im_color, cv2.COLOR_BGR2RGB).copy()
-    cv2.rectangle(image_to_draw, (detection[0], detection[1]), (detection[2], detection[3]), (0, 255, 0), 1)
-    bbox_msg = self.cv_bridge.cv2_to_imgmsg(image_to_draw.astype(np.uint8))
-    bbox_msg.header.stamp = rgb_frame_stamp
-    bbox_msg.header.frame_id = rgb_frame_id
-    bbox_msg.encoding = 'rgb8'
-    self.box_pub.publish(bbox_msg)
+    model = get_model(joint_num, graph_L)
+    checkpoint = load_checkpoint(load_dir=model_chk_path)
+    model.load_state_dict(checkpoint['model_state_dict'])
 
-    color_im_crop = cv2.cvtColor(cv2.resize(im_color[detection[1]:detection[3], detection[0]:detection[2], :], (176, 176)), cv2.COLOR_BGR2RGB).copy()
+    return model, joint_regressor, joint_num, skeleton, graph_L, graph_perm_reverse
 
-    # visualize and publish
-    # remove publish, not needed for object detection on image testing
-    label = self.vistool.plot(color_im_crop, None, None, jt_uvd_pred=keypoint_pred, return_image=True)
-    label_msg = self.cv_bridge.cv2_to_imgmsg(label.astype(np.uint8))
-    label_msg.header.stamp = rgb_frame_stamp
-    label_msg.header.frame_id = rgb_frame_id
-    label_msg.encoding = 'rgb8'
-    self.label_pub.publish(label_msg)
+def parse_args():
+    """
+    Parse input arguments
+    """
+    parser = argparse.ArgumentParser(description='Demo E2E-HandNet on ROS')
+    parser.add_argument('--pretrained_fcos', dest='pretrained_fcos', help='Pretrained FCOS model',
+                        default='models/fcos.pth', type=str)
+    # parser.add_argument('--pretrained_a2j', dest='pretrained_a2j', help='Pretrained A2J model',
+    #                     default='wandb/a2j/E2E-HandNet/326lfxim/checkpoints/epoch=44-step=128879.ckpt', type=str)
+    parser.add_argument('--num_classes', dest='num_classes', help='Number of classes in FCOS model', default=3,
+                        type=int)
+    parser.add_argument('--pretrained_a2j', dest='pretrained_a2j', help='Pretrained A2J model',
+                        default='models/a2j.pth', type=str)
+    parser.add_argument('--rgbd', dest='rgbd', help='Use RGBD', type=bool, default=False)
+    parser.add_argument('--left', dest='left', help='Use left hand', type=bool, default=False)
+    parser.add_argument('--save_path', dest='save_path', help='Path to save results', default='output/', type=str)
 
-    full_image = cv2.cvtColor(im_color, cv2.COLOR_BGR2RGB).copy()
-    joints2d = convert_joints(keypoint_pred, None, detection, None, 176, 176)[:, :2]
-    joints3d = convert_joints(keypoint_pred, None, detection, self.paras, 176, 176)
-    orig_height, orig_width = full_image.shape[:2]
-    out = predict_mesh(self.model, joints2d, self.graph_perm_reverse, self.mesh_model)
+    args = parser.parse_args()
+    return args
 
-    out['mesh'] = out['mesh'] * 1000. + joints3d[0]
-    out['mesh'] /= 1000.
-    out['mesh'][:, 1] *= -1
-    out['mesh'][:, 2] *= -1
+args = parse_args()
 
-    if args.save_path:
-        # find avail filename
-        filename = 0
-        while os.path.exists(os.path.join(self.save_path, f'{filename}.npy')):
-            filename += 1
-        np.save(os.path.join(self.save_path, f'{filename}.npy'), out['mesh'])
+class ImageProcessor:
+    def __init__(self, network):
+        self.network = network
+        self.mesh_model = MANO()
+        self.model, self.joint_regressor, self.joint_num, self.skeleton, self.graph_L, self.graph_perm_reverse = get_joint_setting(
+            self.mesh_model)
+        self.model = self.model.cuda()
+        self.joint_regressor = torch.Tensor(self.joint_regressor).cuda()
 
-    # vis mesh (and optionally save)
-    rendered_img = render(out, self.paras, orig_height, orig_width, full_image, self.mesh_model.face, mesh_filename=os.path.join(self.save_path, f'{filename}.obj' if args.save_path else None))
-    rendered_img = self.cv_bridge.cv2_to_imgmsg(rendered_img.astype(np.uint8))
-    rendered_img.header.stamp = rgb_frame_stamp
-    rendered_img.header.frame_id = rgb_frame_id
-    rendered_img.encoding = 'rgb8'
-    self.mesh_pub.publish(rendered_img)
+    def process_image(self, image_path):
+        im_color = cv2.imread(image_path)
+        # run network
+        with torch.inference_mode():
+            im_color_forward = [torch.from_numpy(
+                cv2.cvtColor(im_color, cv2.COLOR_BGR2RGB).transpose(2, 0, 1).astype(np.float32) / 255.0).cpu()]
+            keypoint_pred, _, detections = self.network(im_color_forward)
+            keypoint_pred = keypoint_pred.cpu().numpy()[0]
+        # [post-processing from the original run_network function, excluding real-time related components]
+        detection = detections[0].clone().numpy()
+        keypoint_pred = np.clip(keypoint_pred, 0.0, 176.0)
+
+        joints2d = convert_joints(keypoint_pred, None, detection, None, 176, 176)[:, :2]
+        orig_height, orig_width = im_color.shape[:2]
+        out = predict_mesh(self.model, joints2d, self.graph_perm_reverse, self.mesh_model)
+        return out['mesh']
+        processed_image_path = './assets/test_1.jpg'
+        cv2.imwrite(processed_image_path, im_color)
+        return out['mesh'], processed_image_path
+
+def main():
+    network = HandNet(args, reload_detector=True, num_classes=args.num_classes, reload_a2j=True, RGBD=args.rgbd).cpu().eval()
+    processor = ImageProcessor(network)
+    image_path = "./assets/test_1.jpg"
+    mesh = processor.process_image(image_path)
+    processed_image_path = processor.process_image(image_path)
+    print(f"Processed mesh: {mesh}")
+    #print(f"Image saved at: {processed_image_path}")
+
+if __name__ == '__main__':
+    main()
