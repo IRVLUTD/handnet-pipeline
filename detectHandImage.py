@@ -1,9 +1,14 @@
 """Test HandNet pipeline on images"""
 
+import os
 import torch
 import argparse
 import cv2
+import pyrender
 import numpy as np
+import trimesh
+
+# from cv_bridge import CvBridge
 from handnet_pipeline.handnet_pipeline import HandNet
 from pose2mesh.lib.funcs_utils import load_checkpoint
 from pose2mesh.lib.graph_utils import build_coarse_graphs
@@ -54,6 +59,7 @@ def get_joint_setting(mesh_model):
     return model, joint_regressor, joint_num, skeleton, graph_L, graph_perm_reverse
 
 def parse_args():
+
     """
     Parse input arguments
     """
@@ -83,6 +89,8 @@ class ImageProcessor:
             self.mesh_model)
         self.model = self.model.cuda()
         self.joint_regressor = torch.Tensor(self.joint_regressor).cuda()
+        self.rgb_frame_id = None
+        self.rgb_frame_stamp = None
 
     def process_image(self, image_path):
         im_color = cv2.imread(image_path)
@@ -96,8 +104,27 @@ class ImageProcessor:
         detection = detections[0].clone().numpy()
         keypoint_pred = np.clip(keypoint_pred, 0.0, 176.0)
 
+        rgb_frame_id = self.rgb_frame_id
+        rgb_frame_stamp = self.rgb_frame_stamp
+
         joints2d = convert_joints(keypoint_pred, None, detection, None, 176, 176)[:, :2]
         orig_height, orig_width = im_color.shape[:2]
+
+        # image_to_draw = cv2.cvtColor(im_color, cv2.COLOR_BGR2RGB).copy()
+        # cv2.rectangle(image_to_draw, (detection[0], detection[1]), (detection[2], detection[3]), (0, 255, 0), 1)
+        image_to_draw = cv2.cvtColor(im_color, cv2.COLOR_BGR2RGB).copy()
+        cv2.rectangle(image_to_draw, (detection[0], detection[1]), (detection[2], detection[3]), (0, 255, 0), 2)
+
+        processed_image_path = './assets/result.jpg'
+        cv2.imwrite(processed_image_path, image_to_draw)
+
+
+
+        color_im_crop = cv2.cvtColor(
+            cv2.resize(im_color[detection[1]:detection[3], detection[0]:detection[2], :], (176, 176)),
+            cv2.COLOR_BGR2RGB).copy()
+
+
         out = predict_mesh(self.model, joints2d, self.graph_perm_reverse, self.mesh_model)
         return out['mesh']
         processed_image_path = './assets/test_1.jpg'
@@ -115,3 +142,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
